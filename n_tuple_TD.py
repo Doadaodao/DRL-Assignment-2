@@ -398,10 +398,12 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
                         best_action = a
                 action = best_action
 
+
             # --- Take Action ---
+            curr_state = copy.deepcopy(state)
             next_state, new_score, done, _ = env.step(action)
             incremental_reward = new_score - previous_score
-            trajectory.append((state, incremental_reward, next_state, done))
+            trajectory.append((curr_state, incremental_reward, next_state, done))
             previous_score = new_score
             max_tile = max(max_tile, np.max(next_state))
             state = next_state
