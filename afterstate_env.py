@@ -30,7 +30,6 @@ class Game2048AfterStateEnv(gym.Env):
         self.board = np.zeros((self.size, self.size), dtype=int)
         self.score = 0
         self.add_random_tile()
-        self.add_random_tile()
         return self.board
 
     def add_random_tile(self):
