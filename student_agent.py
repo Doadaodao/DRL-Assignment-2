@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import copy
 import random
 import math
+from collections import defaultdict
 
 def identity(pattern):
     return pattern
@@ -105,7 +106,6 @@ class NTupleApproximator:
             for sym in group:
                 feature = self.get_feature(board, sym)
                 self.weights[group_idx][feature] += (alpha / num_sym) * delta
-
 
 class Game2048Env(gym.Env):
     def __init__(self):
@@ -328,30 +328,40 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+import sys
+sys.modules['__main__'].NTupleApproximator = NTupleApproximator
+with open('approximator_checkpoint_episode_60000.pkl', 'rb') as f:
+    approximator = pickle.load(f)
+
 def get_action(state, score):
-
-    with open('approximator_checkpoint_episode_60000.pkl', 'rb') as f:
-        approximator = pickle.load(f)
-
     env = Game2048Env()
     env.board = state
     env.score = score
-    env.last_move_valid = True  # Assuming the last move was valid for simplicity
-
+    
     legal_moves = [a for a in range(4) if env.is_move_legal(a)]
     # print("Value estimation of state is:", approximator.value(state))
     # Use your N-Tuple approximator to play 2048
     best_value = -float('inf')
     best_action = None
-    for a in legal_moves:
+    for action in legal_moves:
         env_copy = copy.deepcopy(env)
-        sim_state, sim_score, sim_done, _ = env_copy.step(a)
-        reward = sim_score - env.score
-        value_est = reward + approximator.value(sim_state)
+
+        if action == 0:
+            moved = env_copy.move_up()
+        elif action == 1:
+            moved = env_copy.move_down()
+        elif action == 2:
+            moved = env_copy.move_left()
+        elif action == 3:
+            moved = env_copy.move_right()
+
+        # sim_state, sim_score, sim_done, _ = env_copy.step(a)
+        reward = env_copy.score - env.score
+        value_est = reward + approximator.value(env_copy.board)
         # print("Value estimation of state is:", approximator.value(sim_state))
         if value_est > best_value:
             best_value = value_est
-            best_action = a
+            best_action = action
 
     return best_action # Choose a random action
     
