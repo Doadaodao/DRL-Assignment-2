@@ -330,7 +330,7 @@ class Game2048Env(gym.Env):
 
 import sys
 sys.modules['__main__'].NTupleApproximator = NTupleApproximator
-with open('approximator_checkpoint_episode_60000.pkl', 'rb') as f:
+with open('approximator_checkpoint_episode_40000.pkl', 'rb') as f:
     approximator = pickle.load(f)
 
 def get_action(state, score):
