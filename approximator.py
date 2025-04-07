@@ -30,12 +30,17 @@ def reflect_vertical(pattern):
     return [(3 - r, c) for (r, c) in pattern]
 
 class NTupleApproximator:
-    def __init__(self, board_size, patterns):
+    def __init__(self, board_size, patterns, v_init = 0.0):
         """ Initializes the N-Tuple approximator. 'patterns' is a list of base tuple patterns (each a list of (row, col) tuples). """
         self.board_size = board_size
         self.patterns = patterns
         # Create one weight dictionary per base pattern (shared across its symmetric variants)
-        self.weights = [defaultdict(float) for _ in patterns]
+        if v_init:
+            def constant():
+                return v_init
+            self.weights = [defaultdict(constant) for _ in patterns]
+        else:
+            self.weights = [defaultdict(float) for _ in patterns]
         
         # Instead of a flat list of all symmetric variants, we group them per base pattern.
         self.symmetry_groups = []
