@@ -87,7 +87,7 @@ class NTupleApproximator:
                 feature = self.get_feature(board, sym)
                 group_value += self.weights[group_idx][feature]
             # Average the value across the symmetry group.
-            total_value += (group_value / num_sym)
+            total_value += (group_value)
         return total_value
 
     def update(self, board, delta, alpha):

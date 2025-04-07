@@ -52,7 +52,7 @@ def reflect_vertical(pattern):
     return [(3 - r, c) for (r, c) in pattern]
 
 def const_factory():
-    return 160000.000001 / 8
+    return 800000.000001 / 8
 
 class NTupleApproximator:
     def __init__(self, board_size, patterns):
@@ -190,7 +190,7 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
 
             # --- TD Update ---
             v_current = approximator.value(curr_state)
-            print(f"Current state value: {v_current}")
+            # print(f"Current state value: {v_current}")
             v_next = 0 if done else approximator.value(next_state)
             delta = incremental_reward + gamma * v_next - v_current
             approximator.update(curr_state, delta, alpha)
