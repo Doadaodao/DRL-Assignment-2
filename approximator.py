@@ -36,9 +36,7 @@ class NTupleApproximator:
         self.patterns = patterns
         # Create one weight dictionary per base pattern (shared across its symmetric variants)
         if v_init:
-            def constant():
-                return v_init
-            self.weights = [defaultdict(constant) for _ in patterns]
+            self.weights = [defaultdict(lambda: v_init) for _ in patterns]
         else:
             self.weights = [defaultdict(float) for _ in patterns]
         

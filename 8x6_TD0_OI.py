@@ -15,7 +15,7 @@ patterns = [
     [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2), (2, 2)]
 ]
 
-approximator = NTupleApproximator(board_size=4, patterns=patterns, v_init = 80000.0)
+approximator = NTupleApproximator(board_size=4, patterns=patterns, v_init = 80000.0 / 32)
 env = Game2048AfterStateEnv()
 final_scores = td_learning(env, approximator, num_episodes=400000, alpha=0.1, gamma=0.99, save_dir="8x6_TD0_OI_80k_checkpoints")
 
