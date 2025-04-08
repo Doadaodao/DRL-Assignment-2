@@ -30,11 +30,11 @@ def reflect_vertical(pattern):
     return [(3 - r, c) for (r, c) in pattern]
 
 class NTupleApproximator:
-    def __init__(self, board_size, patterns):
+    def __init__(self, board_size, patterns, v_init = 0.0):
         """ Initializes the N-Tuple approximator. 'patterns' is a list of base tuple patterns (each a list of (row, col) tuples). """
         self.board_size = board_size
         self.patterns = patterns
-
+        self.v_init = v_init
         # Create one weight dictionary per base pattern (shared across its symmetric variants)
         self.weights = [defaultdict(float) for _ in patterns]
         
@@ -87,7 +87,10 @@ class NTupleApproximator:
             for sym in group:
                 feature = self.get_feature(board, sym)
                 weight = self.weights[group_idx][feature]
-                group_value += weight
+                if weight == 0.0:
+                    group_value += self.v_init
+                else:    
+                    group_value += weight
             # Average the value across the symmetry group.
             total_value += (group_value)
         return total_value

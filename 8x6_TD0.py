@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import pickle
 
 from afterstate_env import Game2048AfterStateEnv 
 from approximator import NTupleApproximator
@@ -15,9 +16,13 @@ patterns = [
     [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2), (2, 2)]
 ]
 
-approximator = NTupleApproximator(board_size=4, patterns=patterns)
+# approximator = NTupleApproximator(board_size=4, patterns=patterns)
+
+with open('./8x6_TD0_afterstate_checkpoints/approximator_checkpoint_episode_20000.pkl', 'rb') as f:
+    approximator = pickle.load(f)
+
 env = Game2048AfterStateEnv()
-final_scores = td_learning(env, approximator, num_episodes=400000, alpha=0.1, gamma=0.99, save_dir="8x6_TD0_afterstate_checkpoints")
+final_scores = td_learning(env, approximator, num_episodes=400000, alpha=0.05, gamma=0.99, save_dir="8x6_TD0_cont_lr_5e-2_checkpoints")
 
 plt.plot(final_scores)
 plt.xlabel("Episodes")
