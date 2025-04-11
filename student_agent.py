@@ -8,104 +8,16 @@ import matplotlib.pyplot as plt
 import copy
 import random
 import math
+from pathlib import Path
 from collections import defaultdict
 
-def identity(pattern):
-    return pattern
+from agent_OI import nTupleNewrok
 
-def rot90(pattern):
-    # Rotate 90 degrees clockwise:
-    # (row, col) -> (col, 3 - row)
-    return [(c, 3 - r) for (r, c) in pattern]
-
-def rot180(pattern):
-    # Rotate 180 degrees:
-    # (row, col) -> (3 - row, 3 - col)
-    return [(3 - r, 3 - c) for (r, c) in pattern]
-
-def rot270(pattern):
-    # Rotate 270 degrees clockwise:
-    # (row, col) -> (3 - col, r)
-    return [(3 - c, r) for (r, c) in pattern]
-
-def reflect_horizontal(pattern):
-    # Reflect over vertical axis:
-    # (row, col) -> (row, 3 - col)
-    return [(r, 3 - c) for (r, c) in pattern]
-
-def reflect_vertical(pattern):
-    # Reflect over horizontal axis:
-    # (row, col) -> (3 - row, c)
-    return [(3 - r, c) for (r, c) in pattern]
-
-class NTupleApproximator:
-    def __init__(self, board_size, patterns):
-        """ Initializes the N-Tuple approximator. 'patterns' is a list of base tuple patterns (each a list of (row, col) tuples). """
-        self.board_size = board_size
-        self.patterns = patterns
-        # Create one weight dictionary per base pattern (shared across its symmetric variants)
-        self.weights = [defaultdict(float) for _ in patterns]
-        
-        # Instead of a flat list of all symmetric variants, we group them per base pattern.
-        self.symmetry_groups = []
-        for pattern in self.patterns:
-            syms = self.generate_symmetries(pattern)
-            self.symmetry_groups.append(syms)
-
-    def generate_symmetries(self, pattern):
-        # Generate 8 symmetrical transformations of the given pattern.
-        """
-        Generate the eight symmetric transformations of the input pattern.
-        These include the identity, rotations (90, 180, 270 degrees) and
-        the horizontal reflections of each.
-        """
-        sym = []
-        for transform in [identity, rot90, rot180, rot270]:
-            p = transform(pattern)
-            sym.append(p)
-            sym.append(reflect_horizontal(p))
-        # Remove any duplicates (if any symmetry maps the pattern onto itself)
-        unique = []
-        for s in sym:
-            if s not in unique:
-                unique.append(s)
-        # print(f"Unique symmetries for pattern {pattern}: {unique}")
-        return unique
-
-    def tile_to_index(self, tile):
-        """
-        Converts tile values to an index for the lookup table.
-        """
-        if tile == 0:
-            return 0
-        else:
-            return int(math.log(tile, 2))
-
-    def get_feature(self, board, coords):
-        # Extract tile values from the board based on the given coordinates and convert them into a feature tuple.
-        return tuple(self.tile_to_index(board[r, c]) for (r, c) in coords)
-
-    def value(self, board):
-        # Estimate the board value: sum the evaluations from all patterns.
-        total_value = 0.0
-        # Iterate over each base pattern's group.
-        for group_idx, group in enumerate(self.symmetry_groups):
-            num_sym = len(group)
-            group_value = 0.0
-            for sym in group:
-                feature = self.get_feature(board, sym)
-                group_value += self.weights[group_idx][feature]
-            # Average the value across the symmetry group.
-            total_value += (group_value / num_sym)
-        return total_value
-
-    def update(self, board, delta, alpha):
-        # Update weights based on the TD error.
-        for group_idx, group in enumerate(self.symmetry_groups):
-            num_sym = len(group)
-            for sym in group:
-                feature = self.get_feature(board, sym)
-                self.weights[group_idx][feature] += (alpha / num_sym) * delta
+import sys
+sys.modules['__main__'].nTupleNewrok = nTupleNewrok
+# with open('nTupleNewrok_66251games.pkl', 'rb') as f:
+#     approximator = pickle.load(f)
+# print(approximator)
 
 class Game2048Env(gym.Env):
     def __init__(self):
@@ -328,43 +240,73 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
-import sys
-sys.modules['__main__'].NTupleApproximator = NTupleApproximator
-with open('approximator_checkpoint_episode_50000.pkl', 'rb') as f:
-    approximator = pickle.load(f)
+def load_agent(path):
+    return pickle.load(path.open("rb"))
+
+ngame, approximator = load_agent(Path('nTupleNewrok_103119games.pkl'))
+
 
 def get_action(state, score):
+    # env = Game2048Env()
+    # env.board = state
+    # env.score = score
+    
+    # legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    # # print("Value estimation of state is:", approximator.value(state))
+    # # Use your N-Tuple approximator to play 2048
+    # best_value = -float('inf')
+    # best_action = None
+    # for action in legal_moves:
+    #     env_copy = copy.deepcopy(env)
+
+    #     if action == 0:
+    #         moved = env_copy.move_up()
+    #     elif action == 1:
+    #         moved = env_copy.move_down()
+    #     elif action == 2:
+    #         moved = env_copy.move_left()
+    #     elif action == 3:
+    #         moved = env_copy.move_right()
+
+    #     # sim_state, sim_score, sim_done, _ = env_copy.step(a)
+    #     reward = env_copy.score - env.score
+    #     value_est = reward + approximator.value(env_copy.board)
+    #     # print("Value estimation of state is:", approximator.value(sim_state))
+    #     if value_est > best_value:
+    #         best_value = value_est
+    #         best_action = action
+
+    # print("State is:", state)
+
+    board = [0] * 16
+    for r in range(4):
+        for c in range(4):
+                board[r * 4 + c] = state[(r, c)]
+    board = [int(math.log(v, 2)) if v > 0 else 0 for v in board]
+
+    # print("Board is:", board)
+    
+    action = approximator.best_action(board)
+
+    if action == 1:
+        action = 3
+    elif action == 2:
+        action = 1
+    elif action == 3:
+        action = 2
+
+    return action 
+
+if __name__ == "__main__":
     env = Game2048Env()
-    env.board = state
-    env.score = score
+    env.reset()
+    state = env.board
+    score = env.score
+
+    done = False
+    while not done:
+        action = get_action(state, score)
+        state, score, done, _ = env.step(action)
+        print("Score:", score)
     
-    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
-    # print("Value estimation of state is:", approximator.value(state))
-    # Use your N-Tuple approximator to play 2048
-    best_value = -float('inf')
-    best_action = None
-    for action in legal_moves:
-        env_copy = copy.deepcopy(env)
-
-        if action == 0:
-            moved = env_copy.move_up()
-        elif action == 1:
-            moved = env_copy.move_down()
-        elif action == 2:
-            moved = env_copy.move_left()
-        elif action == 3:
-            moved = env_copy.move_right()
-
-        # sim_state, sim_score, sim_done, _ = env_copy.step(a)
-        reward = env_copy.score - env.score
-        value_est = reward + approximator.value(env_copy.board)
-        # print("Value estimation of state is:", approximator.value(sim_state))
-        if value_est > best_value:
-            best_value = value_est
-            best_action = action
-
-    return best_action # Choose a random action
-    
-    # You can submit this random agent to evaluate the performance of a purely random strategy.
-
-
+    print("Final Score:", score)
