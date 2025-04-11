@@ -85,6 +85,106 @@ class Connect6Game:
         self.turn = 3 - self.turn
         print('= ', end='', flush=True)
 
+    def rule_based_generate_move(self, color):
+        """Generates the best move based on predefined rules and ensures output."""
+        if self.game_over:
+            print("? Game over", flush=True)
+            return
+
+        my_color = 1 if color.upper() == 'B' else 2
+        opponent_color = 3 - my_color
+        empty_positions = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
+
+        # 1. Winning move
+        for r, c in empty_positions:
+            self.board[r, c] = my_color
+            if self.check_win() == my_color:
+                self.board[r, c] = 0
+                move_str = f"{self.index_to_label(c)}{r+1}"
+                self.play_move(color, move_str)
+                print(move_str, flush=True)
+                return
+            self.board[r, c] = 0
+
+        # 2. Block opponent's winning move
+        for r, c in empty_positions:
+            self.board[r, c] = opponent_color
+            if self.check_win() == opponent_color:
+                self.board[r, c] = 0
+                move_str = f"{self.index_to_label(c)}{r+1}"
+                self.play_move(color, move_str)
+                print(move_str, flush=True)
+                return
+            self.board[r, c] = 0
+
+        # 3. Attack: prioritize strong formations
+        best_move = None
+        best_score = -1
+        for r, c in empty_positions:
+            score = self.evaluate_position(r, c, my_color)
+            if score > best_score:
+                best_score = score
+                best_move = (r, c)
+
+        # 4. Defense: prevent opponent from forming strong positions
+        for r, c in empty_positions:
+            opponent_score = self.evaluate_position(r, c, opponent_color)
+            if opponent_score >= best_score:
+                best_score = opponent_score
+                best_move = (r, c)
+
+        # 5. Execute best move
+        if best_move:
+            r, c = best_move
+            move_str = f"{self.index_to_label(c)}{r+1}"
+            self.play_move(color, move_str)
+            print(move_str, flush=True)
+            return
+
+        # 6. Default move: play near last opponent move
+        if self.last_opponent_move:
+            last_r, last_c = self.last_opponent_move
+            potential_moves = [(r, c) for r in range(max(0, last_r - 2), min(self.size, last_r + 3))
+                                           for c in range(max(0, last_c - 2), min(self.size, last_c + 3))
+                                           if self.board[r, c] == 0]
+            if potential_moves:
+                selected = random.choice(potential_moves)
+                move_str = f"{self.index_to_label(selected[1])}{selected[0]+1}"
+                self.play_move(color, move_str)
+                print(move_str, flush=True)
+                return
+
+        # 7. Random move as fallback
+        selected = random.choice(empty_positions)
+        move_str = f"{self.index_to_label(selected[1])}{selected[0]+1}"
+        self.play_move(color, move_str)
+        print(move_str, flush=True)
+
+    def local_random_generate_move(self, color):
+        """Generates a random move near the opponent's last move."""
+        if self.game_over:
+            print("? Game over")
+            return
+
+        if self.last_opponent_move:
+            last_r, last_c = self.last_opponent_move
+            potential_moves = [(r, c) for r in range(max(0, last_r - 2), min(self.size, last_r + 3))
+                                           for c in range(max(0, last_c - 2), min(self.size, last_c + 3))
+                                           if self.board[r, c] == 0]
+        else:
+            potential_moves = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
+
+        if not potential_moves:
+            print("? No valid moves")
+            return
+
+        selected = random.choice(potential_moves)
+        move_str = f"{self.index_to_label(selected[1])}{selected[0]+1}"
+        self.play_move(color, move_str)
+
+        print(f"{move_str}\n\n", end='', flush=True)
+        print(move_str, file=sys.stderr)
+
     # ----------------------------------
     # Heuristic evaluation function
     # ----------------------------------
@@ -140,22 +240,22 @@ class Connect6Game:
         # For instance, the pattern "11011" represents a nearly-connected sequence
         # (two stones, a gap, followed by two stones) that you may exploit.
         patterns = {
-            "111111":   100,    # Six in a row (winning pattern).
-            "111110":   80,     # Five in a row with open ends (winning threat).
-            "011111":   80,     # Five in a row with open ends (winning threat).
-            "111011":   80,     # Five in a row with open ends (winning threat).
-            "110111":   80,     # Five in a row with open ends (winning threat).
-            "101111":   80,     # Five in a row with open ends (winning threat).
-            "111101":   80,     # Five in a row with open ends (winning threat).
+            "111111":   1000,       # Six in a row (winning pattern).
+            "0111110":  1000,     # Five in a row with open ends (winning threat).
+            "111011":   1000,     # Five in a row with open ends (winning threat).
+            "110111":   1000,     # Five in a row with open ends (winning threat).
+            "101111":   1000,     # Five in a row with open ends (winning threat).
+            "111101":   1000,     # Five in a row with open ends (winning threat).
             "011110":   50,     # Open four: four contiguous stones with empty ends.
             "0110110":  50,     # A broken pattern: e.g. pattern "11011" with open ends.
-            "110110":   50,     # Explicit gap pattern from your example.
-            "011011":   50,     # Explicit gap pattern from your example.
-            "10111":    50,     # Nearly complete pattern.
-            "11101":    50,   # Variation on nearly complete pattern.
-            "01110":    500,   # Open three.
-            "010110":   800,   # A split pattern with a gap in between.
-            "0011100":  400,   # Centered three with surrounding space.
+            "0101110":  50,     # Nearly complete pattern.
+            "0110110":  50,     # Nearly complete pattern.
+            "0111010":  50,     # Variation on nearly complete pattern.
+            "01110":    10,     # Open three.
+            "010110":   10,     # A split pattern with a gap in between.
+            "011010":   10,     # A split pattern with a gap in between.
+            "0110":     1,     # Open two.
+            "01010":    1,     # Open two.
         }
 
         # Scan through all lines and accumulate scores.
@@ -183,18 +283,17 @@ class Connect6Game:
             return
 
         my_color = 1 if color.upper() == 'B' else 2
-        # Number of stones to place:
-        stones_to_place = 1 if np.count_nonzero(self.board) == 0 else 2
-
+        
         # Helper: Convert board coordinate move (list of (r, c)) to string move
         def move_to_str(move):
             return ",".join(f"{self.index_to_label(c)}{r+1}" for r, c in move)
 
         # Helper: Get candidate positions from the board (restrict search to near existing stones)
-        def candidate_moves(board, margin=2):
+        def candidate_moves(board, margin):
             size = board.shape[0]
             moves_set = set()
             stones = np.argwhere(board != 0)
+            # print(stones.size, file=sys.stderr)
             if stones.size == 0:
                 return [(size // 2, size // 2)]
             for (r, c) in stones:
@@ -230,16 +329,17 @@ class Connect6Game:
             return 0
 
         # Helper: Rollout (simulation) from a given state until terminal or a rollout limit is reached.
-        def rollout(board, rollout_turn, rollout_limit=10):
+        def rollout(board, rollout_turn, rollout_limit=400):
             current_board = np.copy(board)
             current_turn = rollout_turn
             for _ in range(rollout_limit):
                 winner = check_win_state(current_board)
                 if winner != 0:
-                    return 1 if winner == my_color else -1
+                    # return 1 if winner == my_color else -1
+                    break
                 # Determine stones to place for this move:
                 s = 1 if np.count_nonzero(current_board) == 0 else 2
-                poss = candidate_moves(current_board, margin=2)
+                poss = candidate_moves(current_board, margin=1)
                 if s == 1:
                     move = [random.choice(poss)]
                 else:
@@ -252,7 +352,7 @@ class Connect6Game:
                 current_turn = 3 - current_turn
             # If no terminal state found, evaluate the board
             value = self.evaluate_board(current_board, my_color)
-            return 1 if value > 0 else -1 if value < 0 else 0
+            return value
 
         # MCTS Node definition
         class MCTSNode:
@@ -269,7 +369,7 @@ class Connect6Game:
             def get_moves(self):
                 # Determine the number of stones this move should place given the board state:
                 s = 1 if np.count_nonzero(self.board) == 0 else 2
-                poss = candidate_moves(self.board, margin=2)
+                poss = candidate_moves(self.board, margin=1)
                 moves = []
                 if s == 1:
                     for pos in poss:
@@ -288,7 +388,7 @@ class Connect6Game:
         def uct_select_child(node):
             return max(node.children,
                        key=lambda child: child.wins / child.visits +
-                       math.sqrt(2 * math.log(node.visits) / child.visits))
+                       100 * math.sqrt(2 * math.log(node.visits) / child.visits))
 
         def backpropagate(node, result):
             # Propagate result up the tree; flip sign as we move up.
@@ -299,7 +399,7 @@ class Connect6Game:
                 node = node.parent
 
         # Main MCTS search procedure.
-        def mcts_search(root_board, root_turn, iterations=1000):
+        def mcts_search(root_board, root_turn, iterations=100):
             root_node = MCTSNode(np.copy(root_board), root_turn)
             for _ in range(iterations):
                 # Selection
@@ -319,7 +419,7 @@ class Connect6Game:
                     node.untried_moves.remove(m)
                     node = child_node
                 # Simulation (rollout)
-                result = rollout(node.board, node.turn, rollout_limit=10)
+                result = rollout(node.board, node.turn, rollout_limit=500)
                 # Backpropagation
                 backpropagate(node, result)
             # Choose the move from the root with the highest visit count.
@@ -327,11 +427,12 @@ class Connect6Game:
             return best_child.move if best_child is not None else random.choice(root_node.untried_moves)
 
         # Run MCTS starting from the current board state.
-        best_move = mcts_search(self.board, my_color, iterations=1000)
+        best_move = mcts_search(self.board, my_color, iterations=500)
         if best_move:
             move_str = move_to_str(best_move)
             self.play_move(color, move_str)
             print(move_str, flush=True)
+            print("MCTS", move_str, file=sys.stderr)
         else:
             # Fallback to a random move if MCTS fails (should rarely happen)
             empty_positions = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
@@ -339,6 +440,7 @@ class Connect6Game:
             move_str = f"{self.index_to_label(selected[1])}{selected[0] + 1}"
             self.play_move(color, move_str)
             print(move_str, flush=True)
+            print("random", move_str, file=sys.stderr)
 
     def show_board(self):
         """Displays the board in text format."""

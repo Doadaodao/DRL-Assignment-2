@@ -243,7 +243,7 @@ class Game2048Env(gym.Env):
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_103119games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_110931games.pkl'))
 
 
 def get_action(state, score):
