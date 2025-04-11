@@ -121,7 +121,7 @@ class Connect6Game:
         for r in range(size):
             lines.append(array_to_str(board_rep[r, :]))
         # Columns.
-            for c in range(size):
+        for c in range(size):
             lines.append(array_to_str(board_rep[:, c]))
         # Diagonals (top-left to bottom-right).
         for offset in range(-size + 1, size):
