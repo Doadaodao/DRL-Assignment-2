@@ -232,6 +232,8 @@ class Connect6Game:
     #                     elif count == 3:
     #                         opp_score += 100 if open_ends == 2 else 50
     #     return score - opp_score
+=======
+>>>>>>> 0f380444cba43cebbb2f7535f35de6095772121d
 
     # ----------------------------------
     # NEW: MCTS-based move generator
