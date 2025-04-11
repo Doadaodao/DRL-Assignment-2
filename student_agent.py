@@ -13,8 +13,8 @@ from collections import defaultdict
 
 from agent_OI import nTupleNewrok
 
-# import sys
-# sys.modules['__main__'].nTupleNewrok = nTupleNewrok
+import sys
+sys.modules['__main__'].nTupleNewrok = nTupleNewrok
 # with open('nTupleNewrok_66251games.pkl', 'rb') as f:
 #     approximator = pickle.load(f)
 # print(approximator)
