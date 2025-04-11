@@ -243,7 +243,7 @@ class Game2048Env(gym.Env):
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_66251games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_103119games.pkl'))
 
 
 def get_action(state, score):
@@ -284,7 +284,7 @@ def get_action(state, score):
                 board[r * 4 + c] = state[(r, c)]
     board = [int(math.log(v, 2)) if v > 0 else 0 for v in board]
 
-    print("Board is:", board)
+    # print("Board is:", board)
     
     action = approximator.best_action(board)
 
