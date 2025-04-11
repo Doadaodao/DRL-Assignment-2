@@ -147,12 +147,12 @@ class Connect6Game:
             "110111":   80,     # Five in a row with open ends (winning threat).
             "101111":   80,     # Five in a row with open ends (winning threat).
             "111101":   80,     # Five in a row with open ends (winning threat).
-            "011110":   5000,   # Open four: four contiguous stones with empty ends.
-            "0110110":  5000,   # A broken pattern: e.g. pattern "11011" with open ends.
-            "110110":   3000,   # Explicit gap pattern from your example.
-            "011011":  3000,   # Explicit gap pattern from your example.
-            "10111":   2500,   # Nearly complete pattern.
-            "11101":   2500,   # Variation on nearly complete pattern.
+            "011110":   50,     # Open four: four contiguous stones with empty ends.
+            "0110110":  50,     # A broken pattern: e.g. pattern "11011" with open ends.
+            "110110":   50,     # Explicit gap pattern from your example.
+            "011011":   50,     # Explicit gap pattern from your example.
+            "10111":    50,     # Nearly complete pattern.
+            "11101":    50,   # Variation on nearly complete pattern.
             "01110":    500,   # Open three.
             "010110":   800,   # A split pattern with a gap in between.
             "0011100":  400,   # Centered three with surrounding space.
