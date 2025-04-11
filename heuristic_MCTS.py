@@ -86,77 +86,95 @@ class Connect6Game:
         print('= ', end='', flush=True)
 
     # ----------------------------------
-    # NEW: Heuristic evaluation function
+    # Heuristic evaluation function
     # ----------------------------------
+
     def evaluate_board(self, board, color):
-        """Evaluates the board from the perspective of 'color' by scanning for open/subpatterns."""
-        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
-        score = 0
+        """
+        Evaluates the board from the perspective of the given 'color' using pattern matching.
+        Converts each row, column, and diagonal to a string representation:
+        - '1' for our stone (color),
+        - '2' for the opponent's stone,
+        - '0' for an empty cell.
+        Then, scans for specific patterns—including those with gaps such as "11011"—and returns
+        the differential score (our potential minus opponent's potential).
+        """
         opponent_color = 3 - color
         size = board.shape[0]
-        # Evaluate for our own stones
+        # Create a character representation of the board.
+        # Our stone becomes '1'; opponent's becomes '2'; empty remains '0'.
+        board_rep = np.full((size, size), '0', dtype='<U1')
         for r in range(size):
             for c in range(size):
                 if board[r, c] == color:
-                    for dr, dc in directions:
-                        # only count if this is the start of the chain
-                        prev_r, prev_c = r - dr, c - dc
-                        if 0 <= prev_r < size and 0 <= prev_c < size and board[prev_r, prev_c] == color:
-                            continue
-                        count = 0
-                        rr, cc = r, c
-                        while 0 <= rr < size and 0 <= cc < size and board[rr, cc] == color:
-                            count += 1
-                            rr += dr
-                            cc += dc
-                        # Count open ends
-                        open_ends = 0
-                        if 0 <= rr < size and 0 <= cc < size and board[rr, cc] == 0:
-                            open_ends += 1
-                        start_r, start_c = r - dr, c - dc
-                        if 0 <= start_r < size and 0 <= start_c < size and board[start_r, start_c] == 0:
-                            open_ends += 1
-                        if count >= 6:
-                            score += 100000
-                        elif count == 5:
-                            score += 10000 if open_ends == 2 else 5000
-                        elif count == 4:
-                            score += 1000 if open_ends == 2 else 500
-                        elif count == 3:
-                            score += 100 if open_ends == 2 else 50
-        # Evaluate for opponent stones (subtract the value)
-        opp_score = 0
+                    board_rep[r, c] = '1'
+                elif board[r, c] == opponent_color:
+                    board_rep[r, c] = '2'
+
+        # Helper to convert an array (row of cells) to string.
+        def array_to_str(arr):
+            return ''.join(arr)
+
+        # Gather all the lines (rows, columns, diagonals, and anti-diagonals) for pattern matching.
+        lines = []
+        # Rows.
         for r in range(size):
-            for c in range(size):
-                if board[r, c] == opponent_color:
-                    for dr, dc in directions:
-                        prev_r, prev_c = r - dr, c - dc
-                        if 0 <= prev_r < size and 0 <= prev_c < size and board[prev_r, prev_c] == opponent_color:
-                            continue
-                        count = 0
-                        rr, cc = r, c
-                        while 0 <= rr < size and 0 <= cc < size and board[rr, cc] == opponent_color:
-                            count += 1
-                            rr += dr
-                            cc += dc
-                        open_ends = 0
-                        if 0 <= rr < size and 0 <= cc < size and board[rr, cc] == 0:
-                            open_ends += 1
-                        start_r, start_c = r - dr, c - dc
-                        if 0 <= start_r < size and 0 <= start_c < size and board[start_r, start_c] == 0:
-                            open_ends += 1
-                        if count >= 6:
-                            opp_score += 100000
-                        elif count == 5:
-                            opp_score += 10000 if open_ends == 2 else 5000
-                        elif count == 4:
-                            opp_score += 1000 if open_ends == 2 else 500
-                        elif count == 3:
-                            opp_score += 100 if open_ends == 2 else 50
-        return score - opp_score
+            lines.append(array_to_str(board_rep[r, :]))
+        # Columns.
+        for c in range(size):
+            lines.append(array_to_str(board_rep[:, c]))
+        # Diagonals (top-left to bottom-right).
+        for offset in range(-size + 1, size):
+            diag = board_rep.diagonal(offset=offset)
+            if len(diag) >= 5:
+                lines.append(array_to_str(diag))
+        # Anti-diagonals (top-right to bottom-left).
+        flipped = np.fliplr(board_rep)
+        for offset in range(-size + 1, size):
+            diag = flipped.diagonal(offset=offset)
+            if len(diag) >= 5:
+                lines.append(array_to_str(diag))
+
+        # Define a dictionary of pattern strings and their corresponding scores.
+        # These patterns capture various threats and opportunities.
+        # For instance, the pattern "11011" represents a nearly-connected sequence
+        # (two stones, a gap, followed by two stones) that you may exploit.
+        patterns = {
+            "111111":   100,    # Six in a row (winning pattern).
+            "111110":   80,     # Five in a row with open ends (winning threat).
+            "011111":   80,     # Five in a row with open ends (winning threat).
+            "111011":   80,     # Five in a row with open ends (winning threat).
+            "110111":   80,     # Five in a row with open ends (winning threat).
+            "101111":   80,     # Five in a row with open ends (winning threat).
+            "111101":   80,     # Five in a row with open ends (winning threat).
+            "011110":   5000,   # Open four: four contiguous stones with empty ends.
+            "0110110":  5000,   # A broken pattern: e.g. pattern "11011" with open ends.
+            "110110":   3000,   # Explicit gap pattern from your example.
+            "011011":  3000,   # Explicit gap pattern from your example.
+            "10111":   2500,   # Nearly complete pattern.
+            "11101":   2500,   # Variation on nearly complete pattern.
+            "01110":    500,   # Open three.
+            "010110":   800,   # A split pattern with a gap in between.
+            "0011100":  400,   # Centered three with surrounding space.
+        }
+
+        # Scan through all lines and accumulate scores.
+        my_score = 0
+        opp_score = 0
+        for line in lines:
+            for pat, sc in patterns.items():
+                # Count occurrences for our stones.
+                count = line.count(pat)
+                my_score += count * sc
+                # For the opponent, convert pattern '1's to '2's.
+                opp_pat = pat.replace('1', '2')
+                count_opp = line.count(opp_pat)
+                opp_score += count_opp * sc
+
+        return my_score - opp_score
 
     # ----------------------------------
-    # NEW: MCTS-based move generator
+    # MCTS-based move generator
     # ----------------------------------
     def generate_move(self, color):
         """Generates the best move using a Monte Carlo tree search with board pattern evaluation."""
@@ -258,8 +276,8 @@ class Connect6Game:
                         moves.append([pos])
                 else:
                     # To restrict the branching factor, if there are many candidates, sample a subset.
-                    if len(poss) > 10:
-                        poss = random.sample(poss, 10)
+                    # if len(poss) > 10:
+                    #     poss = random.sample(poss, 10)
                     n = len(poss)
                     for i in range(n):
                         for j in range(i + 1, n):
