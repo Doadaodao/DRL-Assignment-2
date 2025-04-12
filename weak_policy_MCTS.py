@@ -330,8 +330,8 @@ class Connect6Game:
                 current_turn = 3 - current_turn
 
             # If no terminal state found, evaluate the board
-            value = self.evaluate_board(current_board, my_color)
-            return value
+            # value = self.evaluate_board(current_board, my_color)
+            return 0
 
         # MCTS Node definition
         class MCTSNode:
@@ -398,7 +398,7 @@ class Connect6Game:
                     node.untried_moves.remove(m)
                     node = child_node
                 # Simulation (rollout)
-                result = rollout(node.board, node.turn, rollout_limit=500)
+                result = rollout(node.board, node.turn, rollout_limit=100)
                 # Backpropagation
                 backpropagate(node, result)
             # Choose the move from the root with the highest visit count.
