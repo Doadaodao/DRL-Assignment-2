@@ -312,13 +312,11 @@ class Connect6Game:
             for i in range(rollout_limit):
                 
                 winner = check_win_state(current_board)
-                print("Winner", winner, file=sys.stderr)
                 if winner != 0:
-                    
                     return 1 if winner == my_color else -1
                 
-                s = 1 if np.count_nonzero(current_board) == size * size else 2
-                print("S", s, file=sys.stderr)
+                s = 1 if np.count_nonzero(current_board) == 0 else 2
+                print("Board:", current_board, file=sys.stderr)
                 # poss = candidate_moves(current_board, margin=1)
 
                 if s == 1:
