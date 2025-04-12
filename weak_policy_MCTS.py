@@ -307,10 +307,12 @@ class Connect6Game:
             current_board = np.copy(board)
             current_turn = rollout_turn
 
+            print("Roll-out going", file=sys.stderr)
+
             for _ in range(rollout_limit):
                 winner = check_win_state(current_board)
                 if winner != 0:
-                    print("Roll-out winner: ", winner, file=sys.stderr)
+                    
                     return 1 if winner == my_color else -1
                 
                 s = 1 if np.count_nonzero(current_board) == 0 else 2
@@ -404,6 +406,7 @@ class Connect6Game:
             return best_child.move if best_child is not None else random.choice(root_node.untried_moves)
 
         # Run MCTS starting from the current board state.
+        print("MCTS go go", file=sys.stderr)
         best_move = mcts_search(self.board, my_color, iterations=500)
         if best_move:
             move_str = move_to_str(best_move)
