@@ -307,25 +307,30 @@ class Connect6Game:
             current_board = np.copy(board)
             current_turn = rollout_turn
 
-            print("Roll-out going", file=sys.stderr)
+            
 
-            for _ in range(rollout_limit):
+            for i in range(rollout_limit):
+                
                 winner = check_win_state(current_board)
+                print("Winner", winner, file=sys.stderr)
                 if winner != 0:
                     
                     return 1 if winner == my_color else -1
                 
-                s = 1 if np.count_nonzero(current_board) == 0 else 2
+                s = 1 if np.count_nonzero(current_board) == size * size else 2
+                print("S", s, file=sys.stderr)
                 # poss = candidate_moves(current_board, margin=1)
 
                 if s == 1:
                     move = [(size // 2, size // 2)]
+                    
                 else:
                     move = []
                     move.append(rule_based_generate_move(current_board, current_turn))
                     move.append(rule_based_generate_move(current_board, current_turn))
 
                 for r, c in move:
+                    print("Roll-out going", i, file=sys.stderr)
                     current_board[r, c] = current_turn
                 current_turn = 3 - current_turn
 
