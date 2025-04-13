@@ -470,7 +470,7 @@ class Game2048Env(gym.Env):
 
 # Node for TD-MCTS using the TD-trained value approximator
 class TD_MCTS_Node:
-    def __init__(self, state, score, parent=None, action=None):
+    def __init__(self, state, score, parent=None, action=None, env=Game2048AfterStateEnv()):
         """
         state: current board state (numpy array)
         score: cumulative score at this node
