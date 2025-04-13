@@ -8,6 +8,8 @@ import copy
 import random
 import math
 
+from approximator import NTupleApproximator
+from student_agent import Game2048Env
 
 class Game2048AfterStateEnv(gym.Env):
     def __init__(self):
@@ -228,3 +230,31 @@ class Game2048AfterStateEnv(gym.Env):
 
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
+    
+
+def get_action(state, score, approximator):
+    env = Game2048Env()
+    env.board = state
+    env.score = score
+    # env.last_move_valid = True  # Assuming the last move was valid for simplicity
+
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    # print("Value estimation of state is:", approximator.value(state))
+
+    # Use your N-Tuple approximator to play 2048
+    best_value = -float('inf')
+    best_action = None
+    for a in legal_moves:
+        env_copy = copy.deepcopy(env)
+        env_copy.add_random_tile()
+        sim_state, sim_score, sim_done, _ = env_copy.step(a)
+        reward = sim_score - env.score
+        value_est = reward + approximator.value(sim_state)
+        # print("Value estimation of state is:", approximator.value(sim_state))
+        if value_est > best_value:
+            best_value = value_est
+            best_action = a
+
+    return best_action # Choose a random action
+    
+    # You can submit this random agent to evaluate the performance of a purely random strategy.
