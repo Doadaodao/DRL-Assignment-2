@@ -523,7 +523,7 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward) / 80000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward) / 50000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
@@ -645,35 +645,35 @@ def get_action(state, score):
     # state = copy.deepcopy(env.board)
     print(state)
 
-    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
-    best_value = -float('inf')
-    best_action = None
-    for a in legal_moves:
-        env_copy = copy.deepcopy(env)
-        sim_state, sim_score, sim_done, _ = env_copy.step(a)
-        reward = sim_score - env.score
-        value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
-        if value_est > best_value:
-            best_value = value_est
-            best_action = a
-    print("TD best action:", best_action, "best score:", env.score + best_value)
+    if (np.max(env.board) < 8192):
+        legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+        best_value = -float('inf')
+        best_action = None
+        for a in legal_moves:
+            env_copy = copy.deepcopy(env)
+            sim_state, sim_score, sim_done, _ = env_copy.step(a)
+            reward = sim_score - env.score
+            value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
+            if value_est > best_value:
+                best_value = value_est
+                best_action = a
+        print("TD best action:", best_action, "best score:", env.score + best_value)
 
 
+    else:
+        td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=2, gamma=1)
+        
+        root = TD_MCTS_Node(state, score)
+        root.is_random_state = True
 
+        # Run multiple simulations to build the MCTS tree
+        for _ in range(td_mcts.iterations):
+            td_mcts.run_simulation(root)
+        
 
-    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.41, rollout_depth=2, gamma=1)
-    
-    root = TD_MCTS_Node(state, score)
-    root.is_random_state = True
-
-    # Run multiple simulations to build the MCTS tree
-    for _ in range(td_mcts.iterations):
-        td_mcts.run_simulation(root)
-    
-
-    best_action, visit_distribution = td_mcts.best_action_distribution(root)
-    print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-    print("Root reward:", root.total_reward, "visits:", root.visits)
+        best_action, visit_distribution = td_mcts.best_action_distribution(root)
+        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+        print("Root reward:", root.total_reward, "visits:", root.visits)
 
     # print("Board is:", board)
     
@@ -691,10 +691,10 @@ def get_action(state, score):
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    game_env.board = np.array([[512, 4, 16, 2],
-                              [4, 8, 64, 4],
+    game_env.board = np.array([[8192, 64, 16, 0],
+                              [8, 4, 0, 0],
                               [16, 8, 0, 0],
-                              [2, 4, 0, 0]])
+                              [2, 0, 0, 0]])
 
     state = game_env.board
     score = game_env.score
@@ -703,6 +703,6 @@ if __name__ == "__main__":
     while not done:
         action = get_action(state, score)
         state, score, done, _ = game_env.step(action)
-        print("Score:", score)
+        # print("Score:", score)
     
     print("Final Score:", score)
