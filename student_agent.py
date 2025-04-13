@@ -663,7 +663,7 @@ def get_action(state, score):
     # state = copy.deepcopy(env.board)
     # print(state)
 
-    if (np.max(env.board) < 10000):
+    if (np.max(env.board) < 20000):
         legal_moves = [a for a in range(4) if env.is_move_legal(a)]
         best_value = -float('inf')
         best_action = None
