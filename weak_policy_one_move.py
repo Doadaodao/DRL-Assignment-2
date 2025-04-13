@@ -171,8 +171,8 @@ class Connect6Game:
                 opp_pat = pat.replace('1', '2')
                 count_opp = line.count(opp_pat)
                 opp_score += count_opp * sc
-        print("My score:", my_score, "Opponent score:", opp_score, file=sys.stderr)
-        return my_score - opp_score
+        # print("My score:", my_score, "Opponent score:", opp_score, file=sys.stderr)
+        return 0.9999 * my_score - opp_score
 
     # ----------------------------------
     # MCTS-based move generator
@@ -310,38 +310,43 @@ class Connect6Game:
                 return random.choice(empty_positions)
         
         # Helper: Rollout (simulation) from a given state until terminal or a rollout limit is reached.
-        def rollout(board, rollout_turn, rollout_limit):
+        def rollout(board, rollout_turn, moves_left, rollout_limit, factor = 10000):
             size = board.shape[0]
             current_board = copy.deepcopy(board)
             current_turn = rollout_turn
-            
-            # Perform rollouts until a terminal state is reached or the limit is hit.
-            for i in range(rollout_limit):
+
+            if np.count_nonzero(current_board) == 0:
+                current_board[size // 2, size // 2] = current_turn
+            elif moves_left == 1:
+                r, c = rule_based_generate_move(current_board, current_turn)
+                current_board[r, c] = current_turn
                 winner = check_win_state(current_board)
                 if winner != 0:
-                    # print("Rollout value", 1 if winner == my_color else -1, file=sys.stderr)
+                    # value = self.evaluate_board(current_board, my_color) / factor
+                    # return value
                     return 1 if winner == my_color else -1
-        
-                s = 1 if np.count_nonzero(current_board) == 0 else 2
             
-                # poss = candidate_moves(current_board, margin=1)
+            current_turn = 3 - current_turn
 
-                if s == 1:
-                    current_board[size // 2, size // 2] = current_turn
-                else:
-                    for _ in range(2):
-                        r, c = rule_based_generate_move(current_board, current_turn)
-                        current_board[r, c] = current_turn
+            # Perform rollouts until a terminal state is reached or the limit is hit.
+            for i in range(rollout_limit):
+                for _ in range(2):
+                    r, c = rule_based_generate_move(current_board, current_turn)
+                    current_board[r, c] = current_turn
+                    winner = check_win_state(current_board)
+                    if winner != 0:
+                        # value = self.evaluate_board(current_board, my_color) / factor
+                        # return value
+                        return 1 if winner == my_color else -1
                 current_turn = 3 - current_turn
 
             # If no terminal state found, evaluate the board
-            value =self.evaluate_board(current_board, my_color) / 100000
-            # print("Rollout value", value, file=sys.stderr)
-            return value
+            value = self.evaluate_board(current_board, my_color) / factor
+            return 0
 
         # MCTS Node definition
         class MCTSNode:
-            def __init__(self, board, turn, parent=None, move=None):
+            def __init__(self, board, turn, moves_left, parent=None, move=None):
                 self.board = board  # numpy array copy
                 self.turn = turn    # whose turn it is at this node
                 self.parent = parent
@@ -351,75 +356,145 @@ class Connect6Game:
                 self.visits = 0
                 self.untried_moves = self.get_moves()
 
+                self.moves_left = moves_left
+
             def get_moves(self):
                 # Determine the number of stones this move should place given the board state:
                 s = 1 if np.count_nonzero(self.board) == 0 else 2
                 poss = candidate_moves(self.board, margin=1)
                 moves = []
-                if s == 1:
-                    for pos in poss:
-                        moves.append([pos])
-                else:
-                    # To restrict the branching factor, if there are many candidates, sample a subset.
-                    # if len(poss) > 10:
-                    #     poss = random.sample(poss, 10)
-                    n = len(poss)
-                    for i in range(n):
-                        for j in range(i + 1, n):
-                            moves.append([poss[i], poss[j]])
+                for pos in poss:
+                    moves.append(pos)
+                # if s == 1:
+                #     for pos in poss:
+                #         moves.append([pos])
+                # else:
+                #     # To restrict the branching factor, if there are many candidates, sample a subset.
+                #     # if len(poss) > 10:
+                #     #     poss = random.sample(poss, 10)
+                #     n = len(poss)
+                #     for i in range(n):
+                #         for j in range(i + 1, n):
+                #             moves.append([poss[i], poss[j]])
                 return moves
 
         # UCT selection from a node’s children.
         def uct_select_child(node):
             return max(node.children,
                        key=lambda child: child.wins / child.visits +
-                       1.5 * math.sqrt(2 * math.log(node.visits) / child.visits))
+                    1.41 * math.sqrt(2 * math.log(node.visits) / child.visits))
 
         def backpropagate(node, result):
             # Propagate result up the tree; flip sign as we move up.
             while node is not None:
                 node.visits += 1
                 node.wins += result
-                result = -result
+                if node.parent and node.parent.turn != node.turn:
+                    result = -result
                 node = node.parent
 
+        def pick_untried_move(node):
+            current_board = copy.deepcopy(node.board)
+
+            size = current_board.shape[0]
+
+            opponent_color = 3 - my_color
+
+            positions = node.untried_moves
+            
+            # 1. Winning move
+            # print("Checking winning move", file=sys.stderr)
+            for r, c in positions:
+                current_board[r, c] = my_color
+                if check_win_state(current_board) == my_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 2. Block opponent's winning move
+            # print("Checking blocking move", file=sys.stderr)
+            for r, c in positions:
+                current_board[r, c] = opponent_color
+                if check_win_state(current_board) == opponent_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 3. Attack: prioritize strong formations
+            # print("Checking attack move", file=sys.stderr)
+            best_move = None
+            best_score = -1
+            for r, c in positions:
+                score = evaluate_position(current_board, size, r, c, my_color)
+                if score > best_score:
+                    best_score = score
+                    best_move = (r, c)
+
+            # 4. Defense: prevent opponent from forming strong positions
+            # print("Checking defense move", file=sys.stderr)
+            for r, c in positions:
+                opponent_score = evaluate_position(current_board, size, r, c, opponent_color)
+                if opponent_score >= best_score:
+                    best_score = opponent_score
+                    best_move = (r, c)
+        
+            # 5. Execute best move
+            if best_move:
+                return best_move
+            else:
+                return random.choice(positions)
+            
+       
         # Main MCTS search procedure.
-        def mcts_search(root_board, root_turn, iterations):
-            root_node = MCTSNode(np.copy(root_board), root_turn)
-            for _ in range(iterations):
+        def mcts_search(root_board, root_turn, moves_left, iterations):
+            root_node = MCTSNode(np.copy(root_board), root_turn, moves_left)
+            for _ in range(iterations):   
                 # Selection
                 node = root_node
-                # Descend to a leaf node (one that has untried moves or is terminal)
+                
                 if root_node.untried_moves == []:
                     # Descend to a leaf node (one that has untried moves or is terminal)
-                    while len(node.children) >= 5:
+                    while len(node.children) >= 3:
                         node = uct_select_child(node)
-                # while not node.untried_moves == [] and node.children:
-                #     node = uct_select_child(node)
+                
                 # Expansion
                 if node.untried_moves:
-                    m = random.choice(node.untried_moves)
+                    m = pick_untried_move(node)
+                    # print("Untried move:", m, file=sys.stderr)
+                    # m = random.choice(node.untried_moves)
                     new_board = np.copy(node.board)
                     # Apply the move for the current node’s turn.
-                    for r, c in m:
-                        new_board[r, c] = node.turn
-                    child_node = MCTSNode(new_board, 3 - node.turn, parent=node, move=m)
+                    
+                    new_board[m[0], m[1]] = node.turn
+
+                    if node.moves_left == 1:
+                        child_node = MCTSNode(new_board, node.turn, 0, parent=node, move=m)
+                    else:
+                        child_node = MCTSNode(new_board, 3 - node.turn, 1, parent=node, move=m)
+
+                    # print("New node size", np.count_nonzero(new_board),"turn", node.turn, file=sys.stderr)
                     node.children.append(child_node)
                     node.untried_moves.remove(m)
                     node = child_node
                 # Simulation (rollout)
-                result = rollout(node.board, node.turn, rollout_limit=5)
-                move_str = move_to_str(m)
+                result = rollout(node.board, node.turn, node.moves_left, rollout_limit=10)
+                move_str = move_to_str([m])
                 print("Simulated move:", move_str, "Rollout result:", result, file=sys.stderr)
                 # Backpropagation
                 backpropagate(node, result)
             # Choose the move from the root with the highest visit count.
-            best_child = max(root_node.children, key=lambda c: c.wins / c.visits) if root_node.children else None
-            return best_child.move if best_child is not None else random.choice(root_node.untried_moves)
+            best_child = max(root_node.children, key=lambda c: c.visits) if root_node.children else None
+            return [best_child.move] if best_child is not None else [random.choice(root_node.untried_moves)]
 
         # Run MCTS starting from the current board state.
-       
-        best_move = mcts_search(self.board, my_color, iterations=500)
+        if np.count_nonzero(self.board) == 0:
+            best_move = [(self.size // 2, self.size // 2)]
+        else:
+            best_move_1 = mcts_search(self.board, my_color, moves_left=1, iterations=50)
+            copy_board = np.copy(self.board)
+            for r, c in best_move_1:
+                copy_board[r, c] = my_color
+            best_move_2 = mcts_search(copy_board, my_color, moves_left=0, iterations=50)
+            best_move = best_move_1 + best_move_2
+
         if best_move:
             move_str = move_to_str(best_move)
             self.play_move(color, move_str)

@@ -523,7 +523,7 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward) / 50000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward) / 40000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
@@ -585,7 +585,21 @@ class TD_MCTS:
             legal_untried_actions = [a for a in node.untried_actions if sim_env.is_move_legal(a)]
             
             if legal_untried_actions:
-                action = random.choice(legal_untried_actions)
+                # action = random.choice(legal_untried_actions)
+
+                best_value = -float('inf')
+                best_action = None
+                for a in legal_untried_actions:
+                    env_copy = copy.deepcopy(env)
+                    sim_state, sim_score, sim_done, _ = env_copy.step(a)
+                    reward = sim_score - env.score
+                    value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
+                    if value_est > best_value:
+                        best_value = value_est
+                        best_action = a
+
+                action = best_action
+                
                 node.untried_actions.remove(action)
 
                 # Apply the chosen action to the simulation environment.
@@ -661,7 +675,7 @@ def get_action(state, score):
 
 
     else:
-        td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=2, gamma=1)
+        td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=0, gamma=1)
         
         root = TD_MCTS_Node(state, score)
         root.is_random_state = True
@@ -691,10 +705,10 @@ def get_action(state, score):
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    game_env.board = np.array([[8192, 64, 16, 0],
-                              [8, 4, 0, 0],
-                              [16, 8, 0, 0],
-                              [2, 0, 0, 0]])
+    # game_env.board = np.array([[8192, 64, 16, 0],
+    #                           [8, 4, 0, 0],
+    #                           [16, 8, 0, 0],
+    #                           [2, 0, 0, 0]])
 
     state = game_env.board
     score = game_env.score
