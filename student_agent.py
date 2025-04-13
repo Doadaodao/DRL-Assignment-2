@@ -468,9 +468,11 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+env = Game2048AfterStateEnv()
+
 # Node for TD-MCTS using the TD-trained value approximator
 class TD_MCTS_Node:
-    def __init__(self, state, score, parent=None, action=None, env=Game2048AfterStateEnv()):
+    def __init__(self, state, score, parent=None, action=None):
         """
         state: current board state (numpy array)
         score: cumulative score at this node
@@ -487,6 +489,8 @@ class TD_MCTS_Node:
         self.visits = 0
         self.total_reward = 0.0
         # List of untried actions based on the current state's legal moves
+        env = Game2048AfterStateEnv()
+        env.board = state.copy()
         self.untried_actions = [a for a in range(4) if env.is_move_legal(a)]
 
     def fully_expanded(self):
@@ -519,7 +523,7 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward) / 150000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward) / 80000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
@@ -636,17 +640,40 @@ ngame, approximator = load_agent(Path('nTupleNewrok_153744games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
-    td_mcts = TD_MCTS(env, approximator, iterations=101, exploration_constant=1.41, rollout_depth=5, gamma=1)
-    env = td_mcts.create_env_from_state(state, score)
+    env.board = state.copy()
 
+    # state = copy.deepcopy(env.board)
+    print(state)
+
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    best_value = -float('inf')
+    best_action = None
+    for a in legal_moves:
+        env_copy = copy.deepcopy(env)
+        sim_state, sim_score, sim_done, _ = env_copy.step(a)
+        reward = sim_score - env.score
+        value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
+        if value_est > best_value:
+            best_value = value_est
+            best_action = a
+    print("TD best action:", best_action, "best score:", env.score + best_value)
+
+
+
+
+    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.41, rollout_depth=2, gamma=1)
+    
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True
 
     # Run multiple simulations to build the MCTS tree
     for _ in range(td_mcts.iterations):
         td_mcts.run_simulation(root)
+    
 
-    best_action, _ = td_mcts.best_action_distribution(root)
+    best_action, visit_distribution = td_mcts.best_action_distribution(root)
+    print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+    print("Root reward:", root.total_reward, "visits:", root.visits)
 
     # print("Board is:", board)
     
@@ -662,15 +689,20 @@ def get_action(state, score):
     return best_action 
 
 if __name__ == "__main__":
-    env = Game2048Env()
-    env.reset()
-    state = env.board
-    score = env.score
+    game_env = Game2048Env()
+    game_env.reset()
+    game_env.board = np.array([[512, 4, 16, 2],
+                              [4, 8, 64, 4],
+                              [16, 8, 0, 0],
+                              [2, 4, 0, 0]])
+
+    state = game_env.board
+    score = game_env.score
 
     done = False
     while not done:
         action = get_action(state, score)
-        state, score, done, _ = env.step(action)
+        state, score, done, _ = game_env.step(action)
         print("Score:", score)
     
     print("Final Score:", score)
