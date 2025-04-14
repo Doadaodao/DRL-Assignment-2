@@ -496,8 +496,9 @@ class TD_MCTS_Node:
         self.is_after_state = False
         self.is_random_state = False
         self.children = {}
-        self.visits = 1
+        self.visits = 0
         self.total_reward = 0.0
+        self.Q = 0.0
         self.value = 0.0
         # List of untried actions based on the current state's legal moves
         env = Game2048AfterStateEnv()
@@ -517,6 +518,7 @@ class TD_MCTS:
         self.c = exploration_constant
         self.rollout_depth = rollout_depth
         self.gamma = gamma
+        self.V_norm = 50000
 
     def create_env_from_state(self, state, score):
         # Create a deep copy of the environment with the given state and score.
@@ -529,15 +531,15 @@ class TD_MCTS:
         children = list(node.children.values())
 
         if node.is_random_state:
-            best_value = -float('inf')
+            best_uct = -float('inf')
             selected_child = None
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward / child.visits) + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = child.Q + self.c * math.sqrt(math.log(node.visits) / (1 + child.visits))
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
-                if uct_value > best_value:
-                    best_value = uct_value
+                if uct_value > best_uct:
+                    best_uct = uct_value
                     selected_child = child
 
             if selected_child is None:
@@ -547,25 +549,21 @@ class TD_MCTS:
 
         return selected_child
 
-    def rollout(self, node, depth, root_score, V_norm = 50000):
+    def rollout(self, node, depth):
         # Perform a random rollout until reaching the maximum depth or a terminal state.
         # Use the approximator to evaluate the final state.
         
         if node.is_random_state:
             best_value = 0
             for child in node.children.values():
-                value = child.value + child.score - node.score
+                value = child.value + child.score
                 if value > best_value:
                     best_value = value
-
         else:
-            best_value = node.value
+            best_value = node.value + node.score
         
-        reward_along_path = node.score - root_score
-        return (reward_along_path + best_value) / V_norm
-
-
-
+        # reward_along_path = node.score - root_score
+        return best_value / self.V_norm
 
         current_depth = 0
         while current_depth < depth and not env.is_game_over():
@@ -594,9 +592,9 @@ class TD_MCTS:
         # Propagate the obtained reward back up the tree.
         while node is not None:
             node.visits += 1
-            # if reward > node.total_reward:
-            #     node.total_reward = reward
-            node.total_reward += reward
+            if reward > node.Q:
+                node.Q = reward
+            # node.total_reward += reward
             node = node.parent
 
     def run_simulation(self, root):
@@ -623,6 +621,7 @@ class TD_MCTS:
                     child_env.step(action)
                     child_node = TD_MCTS_Node(state=child_env.board, score=child_env.score, parent=node, action=action)
                     child_node.value = self.approximator.V(board_4x4_to_1d(child_env.board))
+                    child_node.Q = (child_node.value + child_node.score) / self.V_norm
                     child_node.is_after_state = True
                     node.children[action] = child_node
             else:
@@ -673,7 +672,7 @@ class TD_MCTS:
             #         node.children[i] = random_node
                 
         # Rollout: Simulate a random game from the expanded node.
-        rollout_reward = self.rollout(node, root_score, self.rollout_depth)
+        rollout_reward = self.rollout(node, self.rollout_depth)
         
         # Backpropagate the obtained reward.
         self.backpropagate(node, rollout_reward)
@@ -704,8 +703,11 @@ def get_action(state, score):
     env = Game2048AfterStateEnv()
     env.board = state.copy()
 
-    # state = copy.deepcopy(env.board)
-    print(state)
+    debug = False
+
+
+    if debug:
+        print(state)
 
     
     legal_moves = [a for a in range(4) if env.is_move_legal(a)]
@@ -719,9 +721,10 @@ def get_action(state, score):
         if value_est > best_value:
             best_value = value_est
             best_action = a
-    print("TD best action:", best_action, "best score:", env.score + best_value)
+    if debug:
+        print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    td_mcts = TD_MCTS(env, approximator, iterations=21, exploration_constant=1.41, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.01, rollout_depth=0, gamma=1)
     
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True
@@ -732,18 +735,19 @@ def get_action(state, score):
     
 
     best_action, visit_distribution = td_mcts.best_action_distribution(root)
-    print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-    print("Root reward:", root.total_reward/root.visits, "visits:", root.visits)
+    if debug:
+        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+        print("Root Q:", root.Q, "visits:", root.visits)
 
     return best_action 
 
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    game_env.board = np.array([[2048, 64, 128, 0],
-                              [8, 4, 0, 0],
-                              [16, 8, 0, 0],
-                              [2, 0, 0, 0]])
+    # game_env.board = np.array([[2048, 64, 128, 0],
+    #                           [8, 4, 0, 0],
+    #                           [16, 8, 0, 0],
+    #                           [2, 0, 0, 0]])
 
     state = game_env.board
     score = game_env.score
