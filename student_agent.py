@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 from collections import defaultdict
 
-from agent_OI import nTupleNewrok
+from agent import nTupleNewrok
 
 import sys
 sys.modules['__main__'].nTupleNewrok = nTupleNewrok
@@ -523,7 +523,7 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward) / 40000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward) / 50000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
@@ -567,6 +567,7 @@ class TD_MCTS:
             node.visits += 1
             if reward > node.total_reward:
                 node.total_reward = reward
+            node.total_reward += reward
             node = node.parent
 
     def run_simulation(self, root):
@@ -616,7 +617,7 @@ class TD_MCTS:
                 # print(child_state)
 
                 # Create several children for the afterstate node
-                for i in range(5):
+                for i in range(10):
                     random_env = copy.deepcopy(sim_env)
                     random_env.add_random_tile()
                     random_node = TD_MCTS_Node(state=random_env.board, score=sim_env.score, parent=node, action=None)
@@ -654,14 +655,14 @@ class TD_MCTS:
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_162971games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_182450games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
     env.board = state.copy()
 
     # state = copy.deepcopy(env.board)
-    # print(state)
+    print(state)
 
     if (np.max(env.board) < 20000):
         legal_moves = [a for a in range(4) if env.is_move_legal(a)]
@@ -675,7 +676,7 @@ def get_action(state, score):
             if value_est > best_value:
                 best_value = value_est
                 best_action = a
-        # print("TD best action:", best_action, "best score:", env.score + best_value)
+        print("TD best action:", best_action, "best score:", env.score + best_value)
 
 
     else:
@@ -690,8 +691,8 @@ def get_action(state, score):
         
 
         best_action, visit_distribution = td_mcts.best_action_distribution(root)
-        # print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-        # print("Root reward:", root.total_reward, "visits:", root.visits)
+        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+        print("Root reward:", root.total_reward, "visits:", root.visits)
 
     
     # action = approximator.best_action(board)
