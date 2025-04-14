@@ -523,7 +523,7 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward) / 50000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward / child.visits) / 20000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
@@ -565,8 +565,8 @@ class TD_MCTS:
         # Propagate the obtained reward back up the tree.
         while node is not None:
             node.visits += 1
-            if reward > node.total_reward:
-                node.total_reward = reward
+            # if reward > node.total_reward:
+            #     node.total_reward = reward
             node.total_reward += reward
             node = node.parent
 
@@ -617,7 +617,7 @@ class TD_MCTS:
                 # print(child_state)
 
                 # Create several children for the afterstate node
-                for i in range(10):
+                for i in range(5):
                     random_env = copy.deepcopy(sim_env)
                     random_env.add_random_tile()
                     random_node = TD_MCTS_Node(state=random_env.board, score=sim_env.score, parent=node, action=None)
@@ -644,12 +644,12 @@ class TD_MCTS:
         best_action = None
         for action, child in root.children.items():
             distribution[action] = child.visits / total_visits if total_visits > 0 else 0
-            # if child.visits > best_visits:
-            #     best_visits = child.visits
-            #     best_action = action
-            if child.total_reward > best_reward:
-                best_reward = child.total_reward
+            if child.visits > best_visits:
+                best_visits = child.visits
                 best_action = action
+            # if child.total_reward > best_reward:
+            #     best_reward = child.total_reward
+            #     best_action = action
         return best_action, distribution
 
 def load_agent(path):
@@ -664,45 +664,35 @@ def get_action(state, score):
     # state = copy.deepcopy(env.board)
     print(state)
 
-    if (np.max(env.board) < 20000):
-        legal_moves = [a for a in range(4) if env.is_move_legal(a)]
-        best_value = -float('inf')
-        best_action = None
-        for a in legal_moves:
-            env_copy = copy.deepcopy(env)
-            sim_state, sim_score, sim_done, _ = env_copy.step(a)
-            reward = sim_score - env.score
-            value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
-            if value_est > best_value:
-                best_value = value_est
-                best_action = a
-        print("TD best action:", best_action, "best score:", env.score + best_value)
-
-
-    else:
-        td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=0, gamma=1)
-        
-        root = TD_MCTS_Node(state, score)
-        root.is_random_state = True
-
-        # Run multiple simulations to build the MCTS tree
-        for _ in range(td_mcts.iterations):
-            td_mcts.run_simulation(root)
-        
-
-        best_action, visit_distribution = td_mcts.best_action_distribution(root)
-        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-        print("Root reward:", root.total_reward, "visits:", root.visits)
-
     
-    # action = approximator.best_action(board)
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    best_value = -float('inf')
+    best_action = None
+    for a in legal_moves:
+        env_copy = copy.deepcopy(env)
+        sim_state, sim_score, sim_done, _ = env_copy.step(a)
+        reward = sim_score - env.score
+        value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
+        if value_est > best_value:
+            best_value = value_est
+            best_action = a
+    print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    # if action == 1:
-    #     action = 3
-    # elif action == 2:
-    #     action = 1
-    # elif action == 3:
-    #     action = 2
+
+
+    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=0, gamma=1)
+    
+    root = TD_MCTS_Node(state, score)
+    root.is_random_state = True
+
+    # Run multiple simulations to build the MCTS tree
+    for _ in range(td_mcts.iterations):
+        td_mcts.run_simulation(root)
+    
+
+    best_action, visit_distribution = td_mcts.best_action_distribution(root)
+    print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+    print("Root reward:", root.total_reward/root.visits, "visits:", root.visits)
 
     return best_action 
 
