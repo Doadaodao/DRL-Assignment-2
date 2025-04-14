@@ -638,28 +638,32 @@ class TD_MCTS:
         # Compute the normalized visit count distribution for each child of the root.
         total_visits = sum(child.visits for child in root.children.values())
         distribution = np.zeros(4)
+        best_reward = -1
         best_visits = -1
         best_action = None
         for action, child in root.children.items():
             distribution[action] = child.visits / total_visits if total_visits > 0 else 0
-            if child.visits > best_visits:
-                best_visits = child.visits
+            # if child.visits > best_visits:
+            #     best_visits = child.visits
+            #     best_action = action
+            if child.total_reward > best_reward:
+                best_reward = child.total_reward
                 best_action = action
         return best_action, distribution
 
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_153744games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_162971games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
     env.board = state.copy()
 
     # state = copy.deepcopy(env.board)
-    print(state)
+    # print(state)
 
-    if (np.max(env.board) < 8192):
+    if (np.max(env.board) < 20000):
         legal_moves = [a for a in range(4) if env.is_move_legal(a)]
         best_value = -float('inf')
         best_action = None
@@ -671,7 +675,7 @@ def get_action(state, score):
             if value_est > best_value:
                 best_value = value_est
                 best_action = a
-        print("TD best action:", best_action, "best score:", env.score + best_value)
+        # print("TD best action:", best_action, "best score:", env.score + best_value)
 
 
     else:
@@ -686,10 +690,9 @@ def get_action(state, score):
         
 
         best_action, visit_distribution = td_mcts.best_action_distribution(root)
-        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-        print("Root reward:", root.total_reward, "visits:", root.visits)
+        # print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+        # print("Root reward:", root.total_reward, "visits:", root.visits)
 
-    # print("Board is:", board)
     
     # action = approximator.best_action(board)
 
