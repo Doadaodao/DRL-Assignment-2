@@ -56,6 +56,16 @@ class Game2048AfterStateEnv(gym.Env):
         if empty_cells:
             x, y = random.choice(empty_cells)
             self.board[x, y] = 2 if random.random() < 0.9 else 4
+    
+    def all_random_states(self):
+        empty_cells = list(zip(*np.where(self.board == 0)))
+        boards = []
+        for i in range(len(empty_cells)):
+            board = copy.deepcopy(self.board)
+            x, y = empty_cells[i]
+            board[x, y] = 2
+            boards.append(board)
+        return boards
 
     def compress(self, row):
         """Compress the row: move non-zero values to the left"""
@@ -486,8 +496,9 @@ class TD_MCTS_Node:
         self.is_after_state = False
         self.is_random_state = False
         self.children = {}
-        self.visits = 0
+        self.visits = 1
         self.total_reward = 0.0
+        self.value = 0.0
         # List of untried actions based on the current state's legal moves
         env = Game2048AfterStateEnv()
         env.board = state.copy()
@@ -499,7 +510,7 @@ class TD_MCTS_Node:
 
 # TD-MCTS class utilizing a trained approximator for leaf evaluation
 class TD_MCTS:
-    def __init__(self, env, approximator, iterations=500, exploration_constant=1.41, rollout_depth=10, gamma=0.99):
+    def __init__(self, env, approximator, iterations=500, exploration_constant=0.5, rollout_depth=10, gamma=0.99):
         self.env = env
         self.approximator = approximator
         self.iterations = iterations
@@ -523,20 +534,38 @@ class TD_MCTS:
 
             for child in children:
             # Calculate UCT value using the normalized reward.
-                uct_value = (child.total_reward / child.visits) / 20000 + self.c * math.sqrt(math.log(node.visits) / child.visits)
+                uct_value = (child.total_reward / child.visits) + self.c * math.sqrt(math.log(node.visits) / child.visits)
                 # print(f"Normalized reward: {normalized_reward}, UCT value: {uct_value}")
                 if uct_value > best_value:
                     best_value = uct_value
                     selected_child = child
+
+            if selected_child is None:
+                selected_child = np.random.choice(children)
         else:
             selected_child = np.random.choice(children)
 
         return selected_child
 
-    def rollout(self, sim_env, depth):
+    def rollout(self, node, depth, root_score, V_norm = 50000):
         # Perform a random rollout until reaching the maximum depth or a terminal state.
         # Use the approximator to evaluate the final state.
-        env = copy.deepcopy(sim_env)
+        
+        if node.is_random_state:
+            best_value = 0
+            for child in node.children.values():
+                value = child.value + child.score - node.score
+                if value > best_value:
+                    best_value = value
+
+        else:
+            best_value = node.value
+        
+        reward_along_path = node.score - root_score
+        return (reward_along_path + best_value) / V_norm
+
+
+
 
         current_depth = 0
         while current_depth < depth and not env.is_game_over():
@@ -572,68 +601,82 @@ class TD_MCTS:
 
     def run_simulation(self, root):
         node = root
+        root_score = root.score
         sim_env = self.create_env_from_state(node.state, node.score)
        
         # Selection: Traverse the tree until reaching a non-fully expanded node.
         while node.fully_expanded() and not sim_env.is_game_over():
-            afterstate_child = self.select_child(node)
-            node = self.select_child(afterstate_child)
+            
+            # afterstate_child = self.select_child(node)
+            node = self.select_child(node)
             
             sim_env = self.create_env_from_state(node.state, node.score)
 
         # Expansion: if the random state node has untried actions, expand one.
         if not sim_env.is_game_over() and node.untried_actions:
-            legal_untried_actions = [a for a in node.untried_actions if sim_env.is_move_legal(a)]
-            
-            if legal_untried_actions:
-                # action = random.choice(legal_untried_actions)
-
-                best_value = -float('inf')
-                best_action = None
-                for a in legal_untried_actions:
-                    env_copy = copy.deepcopy(env)
-                    sim_state, sim_score, sim_done, _ = env_copy.step(a)
-                    reward = sim_score - env.score
-                    value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
-                    if value_est > best_value:
-                        best_value = value_est
-                        best_action = a
-
-                action = best_action
-                
-                node.untried_actions.remove(action)
-
-                # Apply the chosen action to the simulation environment.
-                sim_env.step(action)
-
-                # Create a new child node with the resulting state and score.
-                child_state = copy.deepcopy(sim_env.board)
-                child_node = TD_MCTS_Node(state=child_state, score=sim_env.score, parent=node, action=action)
-                child_node.is_after_state = True
-                node.children[action] = child_node
-                node = child_node
-
-                # print(f"Action taken: {action}")
-                # print(child_state)
-
-                # Create several children for the afterstate node
-                for i in range(5):
-                    random_env = copy.deepcopy(sim_env)
-                    random_env.add_random_tile()
-                    random_node = TD_MCTS_Node(state=random_env.board, score=sim_env.score, parent=node, action=None)
+            # Create all afterstate children for a leaf random state node
+            if node.is_random_state:
+                legal_untried_actions = [a for a in node.untried_actions if sim_env.is_move_legal(a)]
+                for action in legal_untried_actions:
+                    child_env = copy.deepcopy(sim_env)
+                    # Apply the chosen action to the simulation environment.
+                    child_env.step(action)
+                    child_node = TD_MCTS_Node(state=child_env.board, score=child_env.score, parent=node, action=action)
+                    child_node.value = self.approximator.V(board_4x4_to_1d(child_env.board))
+                    child_node.is_after_state = True
+                    node.children[action] = child_node
+            else:
+                # Create all random children for a leaf afterstate node
+                random_states = sim_env.all_random_states()
+                for i in range(len(random_states)):
+                    random_node = TD_MCTS_Node(state=random_states[i], score=sim_env.score, parent=node, action=None)
                     random_node.is_random_state = True
                     node.children[i] = random_node
+            node.untried_actions = []
+                    
+            # legal_untried_actions = [a for a in node.untried_actions if sim_env.is_move_legal(a)]
+            
+            # if legal_untried_actions:
+            #     # action = random.choice(legal_untried_actions)
+
+            #     best_value = -float('inf')
+            #     best_action = None
+            #     for a in legal_untried_actions:
+            #         env_copy = copy.deepcopy(env)
+            #         sim_state, sim_score, sim_done, _ = env_copy.step(a)
+            #         reward = sim_score - env.score
+            #         value_est = reward + approximator.V(board_4x4_to_1d(sim_state))
+            #         if value_est > best_value:
+            #             best_value = value_est
+            #             best_action = a
+
+            #     action = best_action
+                
+            #     node.untried_actions.remove(action)
+
+            #     # Apply the chosen action to the simulation environment.
+            #     sim_env.step(action)
+
+            #     # Create a new child node with the resulting state and score.
+            #     child_state = copy.deepcopy(sim_env.board)
+            #     child_node = TD_MCTS_Node(state=child_state, score=sim_env.score, parent=node, action=action)
+            #     child_node.is_after_state = True
+            #     node.children[action] = child_node
+            #     node = child_node
+
+            #     # Create several children for the afterstate node
+            #     for i in range(20):
+            #         random_env = copy.deepcopy(sim_env)
+            #         random_env.add_random_tile()
+            #         random_node = TD_MCTS_Node(state=random_env.board, score=sim_env.score, parent=node, action=None)
+            #         random_node.is_random_state = True
+            #         node.children[i] = random_node
                 
         # Rollout: Simulate a random game from the expanded node.
-        rollout_reward = self.rollout(sim_env, self.rollout_depth)
+        rollout_reward = self.rollout(node, root_score, self.rollout_depth)
         
         # Backpropagate the obtained reward.
         self.backpropagate(node, rollout_reward)
-
-        # Also update the children of the afterstate node
-        # for i in range(len(node.children)):
-        #     node.children[i].visits += 1
-        #     node.children[i].total_reward += rollout_reward
 
     def best_action_distribution(self, root):
         # Compute the normalized visit count distribution for each child of the root.
@@ -678,9 +721,7 @@ def get_action(state, score):
             best_action = a
     print("TD best action:", best_action, "best score:", env.score + best_value)
 
-
-
-    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=1.00, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=21, exploration_constant=1.41, rollout_depth=0, gamma=1)
     
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True
@@ -699,10 +740,10 @@ def get_action(state, score):
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    # game_env.board = np.array([[8192, 64, 16, 0],
-    #                           [8, 4, 0, 0],
-    #                           [16, 8, 0, 0],
-    #                           [2, 0, 0, 0]])
+    game_env.board = np.array([[2048, 64, 128, 0],
+                              [8, 4, 0, 0],
+                              [16, 8, 0, 0],
+                              [2, 0, 0, 0]])
 
     state = game_env.board
     score = game_env.score
