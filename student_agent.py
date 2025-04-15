@@ -724,7 +724,7 @@ def get_action(state, score):
     if debug:
         print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.01, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.05, rollout_depth=0, gamma=1)
     
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True
