@@ -697,7 +697,7 @@ class TD_MCTS:
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_182450games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_202613games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
@@ -724,27 +724,27 @@ def get_action(state, score):
     if debug:
         print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.01, rollout_depth=0, gamma=1)
+    # td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.02, rollout_depth=0, gamma=1)
     
-    root = TD_MCTS_Node(state, score)
-    root.is_random_state = True
+    # root = TD_MCTS_Node(state, score)
+    # root.is_random_state = True
 
-    # Run multiple simulations to build the MCTS tree
-    for _ in range(td_mcts.iterations):
-        td_mcts.run_simulation(root)
+    # # Run multiple simulations to build the MCTS tree
+    # for _ in range(td_mcts.iterations):
+    #     td_mcts.run_simulation(root)
     
 
-    best_action, visit_distribution = td_mcts.best_action_distribution(root)
-    if debug:
-        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-        print("Root Q:", root.Q, "visits:", root.visits)
+    # best_action, visit_distribution = td_mcts.best_action_distribution(root)
+    # if debug:
+    #     print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+    #     print("Root Q:", root.Q, "visits:", root.visits)
 
     return best_action 
 
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    # game_env.board = np.array([[2048, 64, 128, 0],
+    # game_env.board = np.array([[8192, 256, 128, 0],
     #                           [8, 4, 0, 0],
     #                           [16, 8, 0, 0],
     #                           [2, 0, 0, 0]])
