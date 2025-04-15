@@ -4,7 +4,49 @@ import random
 import math
 import copy
 
+# MCTS Node definition
+class MCTSNode:
+    def __init__(self, board, turn, moves_left, parent=None, move=None):
+        self.board = board  # numpy array copy
+        self.turn = turn    # whose turn it is at this node
+        self.parent = parent
+        self.move = move    # the move (a list of positions) that was applied from the parent's state
+        self.children = []
+        self.wins = 0
+        self.visits = 0
+        self.untried_moves = self.get_moves()
+
+        self.moves_left = moves_left
+    
+    # Helper: Get candidate positions from the board (restrict search to near existing stones)
+    def candidate_moves(self, board, margin):
+        size = board.shape[0]
+        moves_set = set()
+        stones = np.argwhere(board != 0)
+        # print(stones.size, file=sys.stderr)
+        if stones.size == 0:
+            return [(size // 2, size // 2)]
+        for (r, c) in stones:
+            for dr in range(-margin, margin + 1):
+                for dc in range(-margin, margin + 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < size and 0 <= nc < size and board[nr, nc] == 0:
+                        moves_set.add((nr, nc))
+        if not moves_set:
+            return [(r, c) for r in range(size) for c in range(size) if board[r, c] == 0]
+        return list(moves_set)
+
+    def get_moves(self):
+        # Determine the number of stones this move should place given the board state:
+        s = 1 if np.count_nonzero(self.board) == 0 else 2
+        poss = self.candidate_moves(self.board, margin=1)
+        moves = []
+        for pos in poss:
+            moves.append(pos)
+        return moves
+
 class Connect6Game:
+    
     def __init__(self, size=19):
         self.size = size
         self.board = np.zeros((size, size), dtype=int)  # 0: Empty, 1: Black, 2: White
@@ -341,42 +383,9 @@ class Connect6Game:
                 current_turn = 3 - current_turn
 
             # If no terminal state found, evaluate the board
-            value = self.evaluate_board(current_board, my_color) / factor
+            # value = self.evaluate_board(current_board, my_color) / factor
+            # return value
             return 0
-
-        # MCTS Node definition
-        class MCTSNode:
-            def __init__(self, board, turn, moves_left, parent=None, move=None):
-                self.board = board  # numpy array copy
-                self.turn = turn    # whose turn it is at this node
-                self.parent = parent
-                self.move = move    # the move (a list of positions) that was applied from the parent's state
-                self.children = []
-                self.wins = 0
-                self.visits = 0
-                self.untried_moves = self.get_moves()
-
-                self.moves_left = moves_left
-
-            def get_moves(self):
-                # Determine the number of stones this move should place given the board state:
-                s = 1 if np.count_nonzero(self.board) == 0 else 2
-                poss = candidate_moves(self.board, margin=1)
-                moves = []
-                for pos in poss:
-                    moves.append(pos)
-                # if s == 1:
-                #     for pos in poss:
-                #         moves.append([pos])
-                # else:
-                #     # To restrict the branching factor, if there are many candidates, sample a subset.
-                #     # if len(poss) > 10:
-                #     #     poss = random.sample(poss, 10)
-                #     n = len(poss)
-                #     for i in range(n):
-                #         for j in range(i + 1, n):
-                #             moves.append([poss[i], poss[j]])
-                return moves
 
         # UCT selection from a node’s children.
         def uct_select_child(node):
@@ -442,10 +451,9 @@ class Connect6Game:
             else:
                 return random.choice(positions)
             
-       
         # Main MCTS search procedure.
-        def mcts_search(root_board, root_turn, moves_left, iterations):
-            root_node = MCTSNode(np.copy(root_board), root_turn, moves_left)
+        def mcts_search(root_node, root_turn, moves_left, iterations):
+            
             for _ in range(iterations):   
                 # Selection
                 node = root_node
@@ -458,8 +466,6 @@ class Connect6Game:
                 # Expansion
                 if node.untried_moves:
                     m = pick_untried_move(node)
-                    # print("Untried move:", m, file=sys.stderr)
-                    # m = random.choice(node.untried_moves)
                     new_board = np.copy(node.board)
                     # Apply the move for the current node’s turn.
                     
@@ -488,11 +494,18 @@ class Connect6Game:
         if np.count_nonzero(self.board) == 0:
             best_move = [(self.size // 2, self.size // 2)]
         else:
-            best_move_1 = mcts_search(self.board, my_color, moves_left=1, iterations=30)
+            root_node = MCTSNode(np.copy(self.board), my_color, 1)
+            best_move_1 = mcts_search(root_node, my_color, moves_left=1, iterations=30)
             copy_board = np.copy(self.board)
             for r, c in best_move_1:
                 copy_board[r, c] = my_color
-            best_move_2 = mcts_search(copy_board, my_color, moves_left=0, iterations=30)
+
+            for child in root_node.children:
+                if child.move == best_move_1[0]:
+                    root_node = child
+                    break
+            # root_node = MCTSNode(np.copy(self.board), my_color, 1)
+            best_move_2 = mcts_search(root_node, my_color, moves_left=0, iterations=30)
             best_move = best_move_1 + best_move_2
 
         if best_move:
