@@ -196,10 +196,10 @@ class Connect6Game:
             # "0101110":  5000,     # Nearly complete pattern.
             # "0110110":  5000,     # Nearly complete pattern.
             # "0111010":  5000,     # Variation on nearly complete pattern.
-            "01110":    1000,     # Open three.
+            # "01110":    1000,     # Open three.
             # "010110":   1000,     # A split pattern with a gap in between.
             # "011010":   1000,     # A split pattern with a gap in between.
-            "0110":     100,     # Open two.
+            # "0110":     100,     # Open two.
             # "01010":    100,     # Open two.
         }
 
@@ -216,7 +216,7 @@ class Connect6Game:
                 count_opp = line.count(opp_pat)
                 opp_score += count_opp * sc
         # print("My score:", my_score, "Opponent score:", opp_score, file=sys.stderr)
-        return 0.9999 * my_score - opp_score
+        return my_score - opp_score
 
     # ----------------------------------
     # MCTS-based move generator
