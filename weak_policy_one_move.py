@@ -389,6 +389,40 @@ class Connect6Game:
             # return value
             return 0
 
+        # MCTS Node definition
+        class MCTSNode:
+            def __init__(self, board, turn, moves_left, parent=None, move=None):
+                self.board = board  # numpy array copy
+                self.turn = turn    # whose turn it is at this node
+                self.parent = parent
+                self.move = move    # the move (a list of positions) that was applied from the parent's state
+                self.children = []
+                self.wins = 0
+                self.visits = 0
+                self.untried_moves = self.get_moves()
+
+                self.moves_left = moves_left
+
+            def get_moves(self):
+                # Determine the number of stones this move should place given the board state:
+                s = 1 if np.count_nonzero(self.board) == 0 else 2
+                poss = candidate_moves(self.board, margin=1)
+                moves = []
+                for pos in poss:
+                    moves.append(pos)
+                # if s == 1:
+                #     for pos in poss:
+                #         moves.append([pos])
+                # else:
+                #     # To restrict the branching factor, if there are many candidates, sample a subset.
+                #     # if len(poss) > 10:
+                #     #     poss = random.sample(poss, 10)
+                #     n = len(poss)
+                #     for i in range(n):
+                #         for j in range(i + 1, n):
+                #             moves.append([poss[i], poss[j]])
+                return moves
+
         # UCT selection from a node’s children.
         def uct_select_child(node):
             return max(node.children,
