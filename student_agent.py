@@ -724,20 +724,20 @@ def get_action(state, score):
     if debug:
         print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    # td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.02, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.01, rollout_depth=0, gamma=1)
     
-    # root = TD_MCTS_Node(state, score)
-    # root.is_random_state = True
+    root = TD_MCTS_Node(state, score)
+    root.is_random_state = True
 
-    # # Run multiple simulations to build the MCTS tree
-    # for _ in range(td_mcts.iterations):
-    #     td_mcts.run_simulation(root)
+    # Run multiple simulations to build the MCTS tree
+    for _ in range(td_mcts.iterations):
+        td_mcts.run_simulation(root)
     
 
-    # best_action, visit_distribution = td_mcts.best_action_distribution(root)
-    # if debug:
-    #     print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
-    #     print("Root Q:", root.Q, "visits:", root.visits)
+    best_action, visit_distribution = td_mcts.best_action_distribution(root)
+    if debug:
+        print("MCTS selected action:", best_action, "with visit distribution:", visit_distribution)
+        print("Root Q:", root.Q, "visits:", root.visits)
 
     return best_action 
 
