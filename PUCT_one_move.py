@@ -141,22 +141,28 @@ class Connect6Game:
         # For instance, the pattern "11011" represents a nearly-connected sequence
         # (two stones, a gap, followed by two stones) that you may exploit.
         patterns = {
-            "111111":   10000,       # Six in a row (winning pattern).
-            "0111110":  10000,     # Five in a row with open ends (winning threat).
-            "111011":   10000,     # Five in a row with open ends (winning threat).
-            "110111":   10000,     # Five in a row with open ends (winning threat).
-            "101111":   10000,     # Five in a row with open ends (winning threat).
-            "111101":   10000,     # Five in a row with open ends (winning threat).
-            "011110":   5000,     # Open four: four contiguous stones with empty ends.
-            "0110110":  5000,     # A broken pattern: e.g. pattern "11011" with open ends.
-            "0101110":  5000,     # Nearly complete pattern.
-            "0110110":  5000,     # Nearly complete pattern.
-            "0111010":  5000,     # Variation on nearly complete pattern.
-            "01110":    1000,     # Open three.
-            "010110":   1000,     # A split pattern with a gap in between.
-            "011010":   1000,     # A split pattern with a gap in between.
+            "111111":   100000,       # Six in a row (winning pattern).
+            "0111110":  12000,     # Five in a row with open ends (winning threat).
+            "2111110":  10000,     # Five in a row with open ends (winning threat).
+            "0111112":  10000,     # Five in a row with open ends (winning threat).
+            # "111011":   10000,     # Five in a row with open ends (winning threat).
+            # "110111":   10000,     # Five in a row with open ends (winning threat).
+            # "101111":   10000,     # Five in a row with open ends (winning threat).
+            # "111101":   10000,     # Five in a row with open ends (winning threat).
+            "011110":   8000,     # Open four: four contiguous stones with empty ends.
+            "211110":   6000,     # Open four: four contiguous stones with empty ends.
+            "011112":   6000,     # Open four: four contiguous stones with empty ends.
+            # "0110110":  5000,     # A broken pattern: e.g. pattern "11011" with open ends.
+            # "0101110":  5000,     # Nearly complete pattern.
+            # "0110110":  5000,     # Nearly complete pattern.
+            # "0111010":  5000,     # Variation on nearly complete pattern.
+            "01110":    2000,     # Open three.
+            "21110":    1000,     # Open three.
+            "01112":    1000,     # Open three.
+            # "010110":   1000,     # A split pattern with a gap in between.
+            # "011010":   1000,     # A split pattern with a gap in between.
             "0110":     100,     # Open two.
-            "01010":    100,     # Open two.
+            # "01010":    100,     # Open two.
         }
 
         # Scan through all lines and accumulate scores.
@@ -168,11 +174,13 @@ class Connect6Game:
                 count = line.count(pat)
                 my_score += count * sc
                 # For the opponent, convert pattern '1's to '2's.
-                opp_pat = pat.replace('1', '2')
+                opp_pat = pat.replace('1', '3')
+                opp_pat = pat.replace('2', '1')
+                opp_pat = pat.replace('3', '2')
                 count_opp = line.count(opp_pat)
                 opp_score += count_opp * sc
         # print("My score:", my_score, "Opponent score:", opp_score, file=sys.stderr)
-        return 0.9999 * my_score - opp_score
+        return 0.9 * my_score - opp_score
 
     # ----------------------------------
     # MCTS-based move generator
@@ -247,7 +255,9 @@ class Connect6Game:
                     rr -= dr
                     cc -= dc
 
-                if count >= 5:
+                if count == 6:
+                    score += 100000
+                elif count == 5:
                     score += 10000
                 elif count == 4:
                     score += 5000
@@ -322,8 +332,8 @@ class Connect6Game:
                 current_board[r, c] = current_turn
                 winner = check_win_state(current_board)
                 if winner != 0:
-                    # value = self.evaluate_board(current_board, my_color) / factor
-                    # return value
+                    value = self.evaluate_board(current_board, my_color) / factor
+                    return value
                     return 1 if winner == my_color else -1
             
             current_turn = 3 - current_turn
@@ -335,17 +345,18 @@ class Connect6Game:
                     current_board[r, c] = current_turn
                     winner = check_win_state(current_board)
                     if winner != 0:
-                        # value = self.evaluate_board(current_board, my_color) / factor
-                        # return value
+                        value = self.evaluate_board(current_board, my_color) / factor
+                        return value
                         return 1 if winner == my_color else -1
                 current_turn = 3 - current_turn
 
             # If no terminal state found, evaluate the board
             value = self.evaluate_board(current_board, my_color) / factor
+            return value
             return 0
 
-        # MCTS Node definition
-        class MCTSNode:
+        # PUCT Node definition
+        class PUCTNode:
             def __init__(self, board, turn, moves_left, parent=None, move=None):
                 self.board = board  # numpy array copy
                 self.turn = turn    # whose turn it is at this node
@@ -358,31 +369,33 @@ class Connect6Game:
 
                 self.moves_left = moves_left
 
+                self.c = 1.41
+
+                self.prior = 0.0
+
             def get_moves(self):
                 # Determine the number of stones this move should place given the board state:
-                s = 1 if np.count_nonzero(self.board) == 0 else 2
                 poss = candidate_moves(self.board, margin=1)
                 moves = []
                 for pos in poss:
                     moves.append(pos)
-                # if s == 1:
-                #     for pos in poss:
-                #         moves.append([pos])
-                # else:
-                #     # To restrict the branching factor, if there are many candidates, sample a subset.
-                #     # if len(poss) > 10:
-                #     #     poss = random.sample(poss, 10)
-                #     n = len(poss)
-                #     for i in range(n):
-                #         for j in range(i + 1, n):
-                #             moves.append([poss[i], poss[j]])
                 return moves
 
-        # UCT selection from a node’s children.
-        def uct_select_child(node):
-            return max(node.children,
-                       key=lambda child: child.wins / child.visits +
-                    1.41 * math.sqrt(2 * math.log(node.visits) / child.visits))
+        # Selection from a node’s children.
+        def select_child(node):
+            # Select the child with the highest UCT value.
+            # UCT = wins / visits + c * prior * sqrt(parent.visits) / (1 + visits)
+            best_child = None
+            best_value = -float('inf')
+            for child in node.children:
+                q = child.wins / child.visits if child.visits > 0 else 0
+                uct_value = q + node.c * child.prior * math.sqrt(node.visits) / (1 + child.visits)
+                if uct_value > best_value:
+                    best_value = uct_value
+                    best_child = child
+            
+            return best_child
+            
 
         def backpropagate(node, result):
             # Propagate result up the tree; flip sign as we move up.
@@ -442,42 +455,63 @@ class Connect6Game:
             else:
                 return random.choice(positions)
             
-       
+        def calculate_prior(node):
+            priors = np.array([0.0] * len(node.untried_moves))
+            for i, move in enumerate(node.untried_moves):
+                my_move_score = evaluate_position(node.board, node.board.shape[0], move[0], move[1], node.turn)
+                opp_move_score = evaluate_position(node.board, node.board.shape[0], move[0], move[1],3 - node.turn)
+                priors[i] = 0.9 * my_move_score + opp_move_score
+            # print("Prior scores:", priors, file=sys.stderr)
+
+            # Normalize the priors to sum to 1
+            priors -= np.min(priors)
+            priors = np.clip(priors, 0, None)  # Ensure no negative values
+            priors_sum = np.sum(priors)
+            if priors_sum > 0:
+                priors /= priors_sum
+            
+            priors = np.exp(priors)
+            priors_sum = np.sum(priors)
+            if priors_sum > 0:
+                priors /= priors_sum
+            print("Prior probabilities:", priors, file=sys.stderr)
+            return dict(zip(node.untried_moves, priors))
+
+            
+        
         # Main MCTS search procedure.
         def mcts_search(root_board, root_turn, moves_left, iterations):
-            root_node = MCTSNode(np.copy(root_board), root_turn, moves_left)
+            root_node = PUCTNode(np.copy(root_board), root_turn, moves_left)
             for _ in range(iterations):   
                 # Selection
                 node = root_node
-                
-                if root_node.untried_moves == []:
-                    # Descend to a leaf node (one that has untried moves or is terminal)
-                    while len(node.children) >= 3:
-                        node = uct_select_child(node)
-                
+                while node.untried_moves == []:
+                    node = select_child(node)
+                # print("Selected node:", node.move, file=sys.stderr)
+
                 # Expansion
                 if node.untried_moves:
-                    m = pick_untried_move(node)
-                    # print("Untried move:", m, file=sys.stderr)
-                    # m = random.choice(node.untried_moves)
-                    new_board = np.copy(node.board)
-                    # Apply the move for the current node’s turn.
-                    
-                    new_board[m[0], m[1]] = node.turn
-
-                    if node.moves_left == 1:
-                        child_node = MCTSNode(new_board, node.turn, 0, parent=node, move=m)
-                    else:
-                        child_node = MCTSNode(new_board, 3 - node.turn, 1, parent=node, move=m)
-
-                    # print("New node size", np.count_nonzero(new_board),"turn", node.turn, file=sys.stderr)
-                    node.children.append(child_node)
-                    node.untried_moves.remove(m)
-                    node = child_node
+                    print(node.untried_moves, file=sys.stderr)
+                    priors = calculate_prior(node)
+                    for move in node.untried_moves:
+                        new_board = np.copy(node.board)
+                        new_board[move[0], move[1]] = node.turn
+                        if node.moves_left == 1:
+                            child_node = PUCTNode(new_board, node.turn, 0, parent=node, move=move)
+                        else:
+                            child_node = PUCTNode(new_board, 3 - node.turn, 1, parent=node, move=move)
+                        child_node.prior = priors[move]
+                        child_node.visits = 1
+                        child_node.wins = self.evaluate_board(new_board, node.turn)
+                        node.children.append(child_node)
+                        print("Child node:", child_node.move, "Prior:", child_node.prior, "initial wins:", child_node.wins, file=sys.stderr)
+                    node.untried_moves = []
+     
                 # Simulation (rollout)
+                node = select_child(node)
                 result = rollout(node.board, node.turn, node.moves_left, rollout_limit=10)
-                move_str = move_to_str([m])
-                print("Simulated move:", move_str, "Rollout result:", result, file=sys.stderr)
+                move_str = move_to_str([node.move])
+                print("Simulated move:", node.move, "Rollout result:", result, file=sys.stderr)
                 # Backpropagation
                 backpropagate(node, result)
             # Choose the move from the root with the highest visit count.
