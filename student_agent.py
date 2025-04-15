@@ -630,7 +630,7 @@ class TD_MCTS:
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_205645games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_208691games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
@@ -655,7 +655,7 @@ def get_action(state, score):
     if debug:
         print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=0.03, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=31, exploration_constant=0.01, rollout_depth=0, gamma=1)
     
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True
@@ -674,10 +674,10 @@ def get_action(state, score):
 if __name__ == "__main__":
     game_env = Game2048Env()
     game_env.reset()
-    game_env.board = np.array([[8192, 256, 128, 0],
-                              [8, 4, 0, 0],
-                              [16, 8, 0, 0],
-                              [2, 0, 0, 0]])
+    # game_env.board = np.array([[8192, 256, 128, 0],
+    #                           [8, 4, 0, 0],
+    #                           [16, 8, 0, 0],
+    #                           [2, 0, 0, 0]])
 
     state = game_env.board
     score = game_env.score

@@ -1,213 +1,70 @@
 import sys
 import numpy as np
 import random
-
-import os
 import math
-import random
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import copy
 
-# -----------------------------
-# Policy-Value Network definition (should match your training code)
-# -----------------------------
-class PolicyValueNet(nn.Module):
-    def __init__(self, board_size, channels=32):
-        super(PolicyValueNet, self).__init__()
-        self.board_size = board_size
-        self.conv1 = nn.Conv2d(2, channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        # Policy head
-        self.policy_conv = nn.Conv2d(channels, 2, kernel_size=1)
-        self.policy_fc = nn.Linear(2 * board_size * board_size, board_size * board_size)
-        # Value head
-        self.value_conv = nn.Conv2d(channels, 1, kernel_size=1)
-        self.value_fc1 = nn.Linear(board_size * board_size, 64)
-        self.value_fc2 = nn.Linear(64, 1)
-        
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        # Policy head
-        p = F.relu(self.policy_conv(x))
-        p = p.view(p.size(0), -1)
-        p = self.policy_fc(p)
-        p = F.log_softmax(p, dim=1)
-        # Value head
-        v = F.relu(self.value_conv(x))
-        v = v.view(v.size(0), -1)
-        v = F.relu(self.value_fc1(v))
-        v = torch.tanh(self.value_fc2(v))
-        return p, v
+# MCTS Node definition
+class MCTSNode:
+    def __init__(self, board, turn, moves_left, parent=None, move=None):
+        self.board = board  # numpy array copy
+        self.turn = turn    # whose turn it is at this node
+        self.parent = parent
+        self.move = move    # the move (a list of positions) that was applied from the parent's state
+        self.children = []
+        self.wins = 0
+        self.visits = 0
+        self.untried_moves = self.get_moves()
 
-# -----------------------------
-# MCTS Implementation (simplified)
-# -----------------------------
-class TreeNode:
-    def __init__(self, prior):
-        self.P = prior
-        self.N = 0
-        self.W = 0.0
-        self.Q = 0.0
-        self.children = {}  # map: move (tuple) -> TreeNode
+        self.moves_left = moves_left
+    
+    # Helper: Get candidate positions from the board (restrict search to near existing stones)
+    def candidate_moves(self, board, margin):
+        size = board.shape[0]
+        moves_set = set()
+        stones = np.argwhere(board != 0)
+        # print(stones.size, file=sys.stderr)
+        if stones.size == 0:
+            return [(size // 2, size // 2)]
+        for (r, c) in stones:
+            for dr in range(-margin, margin + 1):
+                for dc in range(-margin, margin + 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < size and 0 <= nc < size and board[nr, nc] == 0:
+                        moves_set.add((nr, nc))
+        if not moves_set:
+            return [(r, c) for r in range(size) for c in range(size) if board[r, c] == 0]
+        return list(moves_set)
 
-class MCTS:
-    def __init__(self, network, device, c_puct=1.0, num_simulations=50):
-        self.network = network
-        self.device = device
-        self.c_puct = c_puct
-        self.num_simulations = num_simulations
-
-    def search(self, game, num_simulations=None):
-        if num_simulations is None:
-            num_simulations = self.num_simulations
-        root = TreeNode(0)
-        for _ in range(num_simulations):
-            game_copy = clone_game(game)
-            self._simulate(root, game_copy)
-        counts = {}
-        for move, child in root.children.items():
-            counts[move] = child.N
-        total = sum(counts.values())
-        if total > 0:
-            return {move: count/total for move, count in counts.items()}
-        else:
-            legal = get_legal_moves(game)
-            uniform = 1.0 / len(legal)
-            return {move: uniform for move in legal}
-
-    def _simulate(self, node, game):
-        winner = game.check_win()
-        if game.game_over or winner != 0 or len(get_legal_moves(game)) == 0:
-            if winner == 0:
-                return 0
-            return 1 if winner == (3 - game.turn) else -1
-
-        if not node.children:
-            state_tensor = board_to_tensor(game).to(self.device)
-            log_policy, value = self.network(state_tensor)
-            policy = torch.exp(log_policy).view(-1).detach()
-            legal_moves = get_legal_moves(game)
-            board_size = game.size
-            priors = {}
-            total_prior = 0.0
-            for move in legal_moves:
-                idx = move[0] * board_size + move[1]
-                priors[move] = policy[idx].item()
-                total_prior += priors[move]
-            if total_prior > 0:
-                for move in priors:
-                    priors[move] /= total_prior
-            else:
-                uniform = 1.0 / len(legal_moves)
-                for move in legal_moves:
-                    priors[move] = uniform
-            for move in legal_moves:
-                node.children[move] = TreeNode(priors[move])
-            return value.item()
-
-        best_score = -float('inf')
-        best_move = None
-        for move, child in node.children.items():
-            score = child.Q + self.c_puct * child.P * math.sqrt(node.N+1)/(1+child.N)
-            if score > best_score:
-                best_score = score
-                best_move = move
-        apply_move(game, best_move)
-        value = -self._simulate(node.children[best_move], game)
-        node.children[best_move].N += 1
-        node.children[best_move].W += value
-        node.children[best_move].Q = node.children[best_move].W / node.children[best_move].N
-        node.N += 1
-        return value
-
-# -----------------------------
-# Utility Functions used by MCTS & RLAgent
-# -----------------------------
-def clone_game(game):
-    new_game = Connect6Game(game.size)
-    new_game.board = np.copy(game.board)
-    new_game.turn = game.turn
-    new_game.game_over = game.game_over
-    return new_game
-
-def get_legal_moves(game):
-    moves = []
-    for r in range(game.size):
-        for c in range(game.size):
-            if game.board[r, c] == 0:
-                moves.append((r, c))
-    return moves
-
-def board_to_tensor(game):
-    board = game.board
-    size = game.size
-    current = game.turn
-    if current == 1:
-        current_stones = (board == 1).astype(np.float32)
-        opp_stones = (board == 2).astype(np.float32)
-    else:
-        current_stones = (board == 2).astype(np.float32)
-        opp_stones = (board == 1).astype(np.float32)
-    state = np.stack([current_stones, opp_stones], axis=0)
-    state_tensor = torch.tensor(state).unsqueeze(0)  # shape: [1, 2, size, size]
-    return state_tensor
-
-def apply_move(game, move):
-    r, c = move
-    game.board[r, c] = game.turn
-    if game.check_win() != 0:
-        game.game_over = True
-    game.turn = 3 - game.turn
-
-# -----------------------------
-# RLAgent class: Wraps network and MCTS for move selection.
-# -----------------------------
-class RLAgent:
-    def __init__(self, board_size, checkpoint_path, mcts_simulations=50, c_puct=1.0):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.network = PolicyValueNet(board_size).to(self.device)
-        if os.path.exists(checkpoint_path):
-            self.network.load_state_dict(torch.load(checkpoint_path, map_location=self.device))
-        else:
-            print("Checkpoint not found at", checkpoint_path)
-        self.network.eval()
-        self.mcts = MCTS(self.network, self.device, c_puct=c_puct, num_simulations=mcts_simulations)
-
-    def select_move(self, game):
-        # Use MCTS search to get move probabilities
-        move_probs = self.mcts.search(game)
-        if move_probs:
-            # For testing, select the move with the highest visit probability.
-            best_move = max(move_probs, key=move_probs.get)
-            return best_move
-        else:
-            return None
-
-def load_rl_agent(board_size, checkpoint_path):
-    return RLAgent(board_size, checkpoint_path)
-
+    def get_moves(self):
+        # Determine the number of stones this move should place given the board state:
+        s = 1 if np.count_nonzero(self.board) == 0 else 2
+        poss = self.candidate_moves(self.board, margin=1)
+        moves = []
+        for pos in poss:
+            moves.append(pos)
+        return moves
 
 class Connect6Game:
+    
     def __init__(self, size=19):
         self.size = size
         self.board = np.zeros((size, size), dtype=int)  # 0: Empty, 1: Black, 2: White
         self.turn = 1  # 1: Black, 2: White
         self.game_over = False
+        self.last_opponent_move = None
+
+        self.root_node = None
 
     def reset_board(self):
-        """Clears the board and resets the game."""
+        """Resets the board and game state."""
         self.board.fill(0)
         self.turn = 1
         self.game_over = False
         print("= ", flush=True)
 
     def set_board_size(self, size):
-        """Sets the board size and resets the game."""
+        """Changes board size and resets the game."""
         self.size = size
         self.board = np.zeros((size, size), dtype=int)
         self.turn = 1
@@ -215,12 +72,7 @@ class Connect6Game:
         print("= ", flush=True)
 
     def check_win(self):
-        """Checks if a player has won.
-        Returns:
-        0 - No winner yet
-        1 - Black wins
-        2 - White wins
-        """
+        """Checks if a player has won. Returns 1 (Black wins), 2 (White wins), or 0 (no winner)."""
         directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
         for r in range(self.size):
             for c in range(self.size):
@@ -241,11 +93,11 @@ class Connect6Game:
         return 0
 
     def index_to_label(self, col):
-        """Converts column index to letter (skipping 'I')."""
-        return chr(ord('A') + col + (1 if col >= 8 else 0))  # Skips 'I'
+        """Converts a column index to a letter (skipping 'I')."""
+        return chr(ord('A') + col + (1 if col >= 8 else 0))
 
     def label_to_index(self, col_char):
-        """Converts letter to column index (accounting for missing 'I')."""
+        """Converts a column letter to an index (handling the missing 'I')."""
         col_char = col_char.upper()
         if col_char >= 'J':  # 'I' is skipped
             return ord(col_char) - ord('A') - 1
@@ -253,7 +105,7 @@ class Connect6Game:
             return ord(col_char) - ord('A')
 
     def play_move(self, color, move):
-        """Places stones and checks the game status."""
+        """Processes a move and updates the board."""
         if self.game_over:
             print("? Game over")
             return
@@ -263,79 +115,470 @@ class Connect6Game:
 
         for stone in stones:
             stone = stone.strip()
-            if len(stone) < 2:
-                print("? Invalid format")
-                return
             col_char = stone[0].upper()
-            if not col_char.isalpha():
-                print("? Invalid format")
-                return
             col = self.label_to_index(col_char)
-            try:
-                row = int(stone[1:]) - 1
-            except ValueError:
-                print("? Invalid format")
-                return
-            if not (0 <= row < self.size and 0 <= col < self.size):
-                print("? Move out of board range")
-                return
-            if self.board[row, col] != 0:
-                print("? Position already occupied")
+            row = int(stone[1:]) - 1
+            if not (0 <= row < self.size and 0 <= col < self.size) or self.board[row, col] != 0:
+                print("? Invalid move")
                 return
             positions.append((row, col))
 
         for row, col in positions:
             self.board[row, col] = 1 if color.upper() == 'B' else 2
 
+        self.last_opponent_move = positions[-1]  # Track the opponent's last move
         self.turn = 3 - self.turn
         print('= ', end='', flush=True)
+    
+    # ----------------------------------
+    # Heuristic evaluation function
+    # ----------------------------------
 
-    # def generate_move(self, color):
-    #     """Generates a random move for the computer."""
-    #     if self.game_over:
-    #         print("? Game over")
-    #         return
+    def evaluate_board(self, board, color):
+        """
+        Evaluates the board from the perspective of the given 'color' using pattern matching.
+        Converts each row, column, and diagonal to a string representation:
+        - '1' for our stone (color),
+        - '2' for the opponent's stone,
+        - '0' for an empty cell.
+        Then, scans for specific patterns—including those with gaps such as "11011"—and returns
+        the differential score (our potential minus opponent's potential).
+        """
+        opponent_color = 3 - color
+        size = board.shape[0]
+        # Create a character representation of the board.
+        # Our stone becomes '1'; opponent's becomes '2'; empty remains '0'.
+        board_rep = np.full((size, size), '0', dtype='<U1')
+        for r in range(size):
+            for c in range(size):
+                if board[r, c] == color:
+                    board_rep[r, c] = '1'
+                elif board[r, c] == opponent_color:
+                    board_rep[r, c] = '2'
 
-    #     empty_positions = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
-    #     selected = random.sample(empty_positions, 1)
-    #     move_str = ",".join(f"{self.index_to_label(c)}{r+1}" for r, c in selected)
-        
-    #     self.play_move(color, move_str)
+        # Helper to convert an array (row of cells) to string.
+        def array_to_str(arr):
+            return ''.join(arr)
 
-    #     print(f"{move_str}\n\n", end='', flush=True)
-    #     print(move_str, file=sys.stderr)
+        # Gather all the lines (rows, columns, diagonals, and anti-diagonals) for pattern matching.
+        lines = []
+        # Rows.
+        for r in range(size):
+            lines.append(array_to_str(board_rep[r, :]))
+        # Columns.
+        for c in range(size):
+            lines.append(array_to_str(board_rep[:, c]))
+        # Diagonals (top-left to bottom-right).
+        for offset in range(-size + 1, size):
+            diag = board_rep.diagonal(offset=offset)
+            if len(diag) >= 5:
+                lines.append(array_to_str(diag))
+        # Anti-diagonals (top-right to bottom-left).
+        flipped = np.fliplr(board_rep)
+        for offset in range(-size + 1, size):
+            diag = flipped.diagonal(offset=offset)
+            if len(diag) >= 5:
+                lines.append(array_to_str(diag))
 
+        # Define a dictionary of pattern strings and their corresponding scores.
+        # These patterns capture various threats and opportunities.
+        # For instance, the pattern "11011" represents a nearly-connected sequence
+        # (two stones, a gap, followed by two stones) that you may exploit.
+        patterns = {
+            "111111":   10000,       # Six in a row (winning pattern).
+            "0111110":  20000,     # Five in a row with open ends (winning threat).
+            # "111011":   10000,     # Five in a row with open ends (winning threat).
+            # "110111":   10000,     # Five in a row with open ends (winning threat).
+            # "101111":   10000,     # Five in a row with open ends (winning threat).
+            # "111101":   10000,     # Five in a row with open ends (winning threat).
+            "011110":   20000,     # Open four: four contiguous stones with empty ends.
+            "211110":   10000,     # Open four: four contiguous stones with empty ends.
+            "011112":   10000,     # Open four: four contiguous stones with empty ends.
+            # "0110110":  5000,     # A broken pattern: e.g. pattern "11011" with open ends.
+            # "0101110":  5000,     # Nearly complete pattern.
+            # "0110110":  5000,     # Nearly complete pattern.
+            # "0111010":  5000,     # Variation on nearly complete pattern.
+            "01110":    1000,     # Open three.
+            # "010110":   1000,     # A split pattern with a gap in between.
+            # "011010":   1000,     # A split pattern with a gap in between.
+            # "0110":     100,     # Open two.
+            # "01010":    100,     # Open two.
+        }
+
+        # Scan through all lines and accumulate scores.
+        my_score = 0
+        opp_score = 0
+        for line in lines:
+            for pat, sc in patterns.items():
+                # Count occurrences for our stones.
+                count = line.count(pat)
+                my_score += count * sc
+                # For the opponent, convert pattern '1's to '2's.
+                opp_pat = pat.replace('1', '3')
+                opp_pat = opp_pat.replace('2', '1')
+                opp_pat = opp_pat.replace('3', '2')
+                count_opp = line.count(opp_pat)
+                opp_score += count_opp * sc
+        # print("My score:", my_score, "Opponent score:", opp_score, file=sys.stderr)
+        return my_score - opp_score
+
+    # ----------------------------------
+    # MCTS-based move generator
+    # ----------------------------------
     def generate_move(self, color):
-        """Generates a move using the trained RL network via MCTS."""
+        """Generates the best move using a Monte Carlo tree search with board pattern evaluation."""
         if self.game_over:
-            print("? Game over")
+            print("? Game over", flush=True)
             return
 
-        # Lazy-load the RL agent if not already loaded
-        if self.rl_agent is None:
-            # Adjust checkpoint_path as needed
-            checkpoint_path = "connect6_checkpoint.pth"
-            self.rl_agent = load_rl_agent(self.size, checkpoint_path)
-            print("RL agent loaded from checkpoint.")
+        my_color = 1 if color.upper() == 'B' else 2
+        
+        # Helper: Convert board coordinate move (list of (r, c)) to string move
+        def move_to_str(move):
+            return ",".join(f"{self.index_to_label(c)}{r+1}" for r, c in move)
 
-        # Use the RL agent to select the best move using MCTS
-        best_move = self.rl_agent.select_move(self)
-        if best_move is None:
-            print("? Failed to generate a move")
-            return
+        # Helper: Get candidate positions from the board (restrict search to near existing stones)
+        def candidate_moves(board, margin):
+            size = board.shape[0]
+            moves_set = set()
+            stones = np.argwhere(board != 0)
+            # print(stones.size, file=sys.stderr)
+            if stones.size == 0:
+                return [(size // 2, size // 2)]
+            for (r, c) in stones:
+                for dr in range(-margin, margin + 1):
+                    for dc in range(-margin, margin + 1):
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < size and 0 <= nc < size and board[nr, nc] == 0:
+                            moves_set.add((nr, nc))
+            if not moves_set:
+                return [(r, c) for r in range(size) for c in range(size) if board[r, c] == 0]
+            return list(moves_set)
 
-        # Convert the chosen move (row, col) to move notation (e.g., "J10")
-        move_str = f"{self.index_to_label(best_move[1])}{best_move[0] + 1}"
+        # Helper: Check for win in a given board state
+        def check_win_state(board):
+            size = board.shape[0]
+            directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+            for r in range(size):
+                for c in range(size):
+                    if board[r, c] != 0:
+                        current_color = board[r, c]
+                        for dr, dc in directions:
+                            prev_r, prev_c = r - dr, c - dc
+                            if 0 <= prev_r < size and 0 <= prev_c < size and board[prev_r, prev_c] == current_color:
+                                continue
+                            count = 0
+                            rr, cc = r, c
+                            while 0 <= rr < size and 0 <= cc < size and board[rr, cc] == current_color:
+                                count += 1
+                                rr += dr
+                                cc += dc
+                            if count >= 6:
+                                return current_color
+            return 0
+        
+        def evaluate_position(board, size, r, c, color):
+            directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+            score = 0
+            # print("Evaluating position", r, c, file=sys.stderr)
 
-        # Play the move
-        self.play_move(color, move_str)
+            for dr, dc in directions:
+                count = 1
+                rr, cc = r + dr, c + dc
+                while 0 <= rr < size and 0 <= cc < size and board[rr, cc] == color:
+                    count += 1
+                    rr += dr
+                    cc += dc
+                rr, cc = r - dr, c - dc
+                while 0 <= rr < size and 0 <= cc < size and board[rr, cc] == color:
+                    count += 1
+                    rr -= dr
+                    cc -= dc
 
-        # Output the move (for GTP output and stderr logging)
-        print(f"{move_str}\n\n", end='', flush=True)
-        print(move_str, file=sys.stderr)
+                if count >= 5:
+                    score += 10000
+                elif count == 4:
+                    score += 5000
+                elif count == 3:
+                    score += 1000
+                elif count == 2:
+                    score += 100
+        
+            return score
+        
+        def rule_based_generate_move(board, my_color):
+            current_board = copy.deepcopy(board)
+
+            size = board.shape[0]
+
+            opponent_color = 3 - my_color
+            # empty_positions = [(r, c) for r in range(size) for c in range(size) if board[r, c] == 0]
+            empty_positions = candidate_moves(current_board, 1)
+            # print("Current board", current_board, file=sys.stderr)
+            # print("Empty positions", empty_positions, file=sys.stderr)
+
+            # 1. Winning move
+            # print("Checking winning move", file=sys.stderr)
+            for r, c in empty_positions:
+                current_board[r, c] = my_color
+                if check_win_state(current_board) == my_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 2. Block opponent's winning move
+            # print("Checking blocking move", file=sys.stderr)
+            for r, c in empty_positions:
+                current_board[r, c] = opponent_color
+                if check_win_state(current_board) == opponent_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 3. Attack: prioritize strong formations
+            # print("Checking attack move", file=sys.stderr)
+            best_move = None
+            best_score = -1
+            for r, c in empty_positions:
+                score = evaluate_position(current_board, size, r, c, my_color)
+                if score > best_score:
+                    best_score = score
+                    best_move = (r, c)
+
+            # 4. Defense: prevent opponent from forming strong positions
+            # print("Checking defense move", file=sys.stderr)
+            for r, c in empty_positions:
+                opponent_score = evaluate_position(current_board, size, r, c, opponent_color)
+                if opponent_score >= best_score:
+                    best_score = opponent_score
+                    best_move = (r, c)
+        
+            # 5. Execute best move
+            if best_move:
+                return best_move
+            else:
+                return random.choice(empty_positions)
+        
+        # Helper: Rollout (simulation) from a given state until terminal or a rollout limit is reached.
+        def rollout(board, rollout_turn, moves_left, rollout_limit, factor = 100000):
+            size = board.shape[0]
+            current_board = copy.deepcopy(board)
+            current_turn = rollout_turn
+
+            if np.count_nonzero(current_board) == 0:
+                current_board[size // 2, size // 2] = current_turn
+            elif moves_left == 1:
+                r, c = rule_based_generate_move(current_board, current_turn)
+                current_board[r, c] = current_turn
+                winner = check_win_state(current_board)
+                if winner != 0:
+                    # value = self.evaluate_board(current_board, my_color) / factor
+                    # return value
+                    return 1 if winner == my_color else -1
+            
+            current_turn = 3 - current_turn
+
+            # Perform rollouts until a terminal state is reached or the limit is hit.
+            for i in range(rollout_limit):
+                for _ in range(2):
+                    r, c = rule_based_generate_move(current_board, current_turn)
+                    current_board[r, c] = current_turn
+                    winner = check_win_state(current_board)
+                    if winner != 0:
+                        # value = self.evaluate_board(current_board, my_color) / factor
+                        # return value
+                        return 1 if winner == my_color else -1
+                current_turn = 3 - current_turn
+
+            # If no terminal state found, evaluate the board
+            value = self.evaluate_board(current_board, my_color) / factor
+            return value
+            return 0
+
+        # MCTS Node definition
+        class MCTSNode:
+            def __init__(self, board, turn, moves_left, parent=None, move=None):
+                self.board = board  # numpy array copy
+                self.turn = turn    # whose turn it is at this node
+                self.parent = parent
+                self.move = move    # the move (a list of positions) that was applied from the parent's state
+                self.children = []
+                self.wins = 0
+                self.visits = 0
+                self.untried_moves = self.get_moves()
+
+                self.moves_left = moves_left
+
+            def get_moves(self):
+                # Determine the number of stones this move should place given the board state:
+                s = 1 if np.count_nonzero(self.board) == 0 else 2
+                poss = candidate_moves(self.board, margin=1)
+                moves = []
+                for pos in poss:
+                    moves.append(pos)
+                # if s == 1:
+                #     for pos in poss:
+                #         moves.append([pos])
+                # else:
+                #     # To restrict the branching factor, if there are many candidates, sample a subset.
+                #     # if len(poss) > 10:
+                #     #     poss = random.sample(poss, 10)
+                #     n = len(poss)
+                #     for i in range(n):
+                #         for j in range(i + 1, n):
+                #             moves.append([poss[i], poss[j]])
+                return moves
+
+        # UCT selection from a node’s children.
+        def uct_select_child(node):
+            return max(node.children,
+                       key=lambda child: child.wins / child.visits +
+                    1.41 * math.sqrt(2 * math.log(node.visits) / child.visits))
+
+        def backpropagate(node, result):
+            # Propagate result up the tree; flip sign as we move up.
+            while node is not None:
+                node.visits += 1
+                node.wins += result
+                if node.parent and node.parent.turn != node.turn:
+                    result = -result
+                node = node.parent
+
+        def pick_untried_move(node):
+            current_board = copy.deepcopy(node.board)
+
+            size = current_board.shape[0]
+
+            opponent_color = 3 - my_color
+
+            positions = node.untried_moves
+            
+            # 1. Winning move
+            # print("Checking winning move", file=sys.stderr)
+            for r, c in positions:
+                current_board[r, c] = my_color
+                if check_win_state(current_board) == my_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 2. Block opponent's winning move
+            # print("Checking blocking move", file=sys.stderr)
+            for r, c in positions:
+                current_board[r, c] = opponent_color
+                if check_win_state(current_board) == opponent_color:
+                    return (r, c)
+                current_board[r, c] = 0
+
+            # 3. Attack: prioritize strong formations
+            # print("Checking attack move", file=sys.stderr)
+            best_move = None
+            best_score = -1
+            for r, c in positions:
+                score = evaluate_position(current_board, size, r, c, my_color)
+                if score > best_score:
+                    best_score = score
+                    best_move = (r, c)
+
+            # 4. Defense: prevent opponent from forming strong positions
+            # print("Checking defense move", file=sys.stderr)
+            for r, c in positions:
+                opponent_score = evaluate_position(current_board, size, r, c, opponent_color)
+                if opponent_score >= best_score:
+                    best_score = opponent_score
+                    best_move = (r, c)
+        
+            # 5. Execute best move
+            if best_move:
+                return best_move
+            else:
+                return random.choice(positions)
+            
+        # Main MCTS search procedure.
+        def mcts_search(root_node, root_turn, moves_left, iterations):
+            
+            for _ in range(iterations):   
+                # Selection
+                node = root_node
+                
+                if root_node.untried_moves == []:
+                    # Descend to a leaf node (one that has untried moves or is terminal)
+                    while len(node.children) >= 5:
+                        node = uct_select_child(node)
+                
+                # Expansion
+                if node.untried_moves:
+                    m = pick_untried_move(node)
+                    new_board = np.copy(node.board)
+                    # Apply the move for the current node’s turn.
+                    
+                    new_board[m[0], m[1]] = node.turn
+
+                    if node.moves_left == 1:
+                        child_node = MCTSNode(new_board, node.turn, 0, parent=node, move=m)
+                    else:
+                        child_node = MCTSNode(new_board, 3 - node.turn, 1, parent=node, move=m)
+
+                    # print("New node size", np.count_nonzero(new_board),"turn", node.turn, file=sys.stderr)
+                    node.children.append(child_node)
+                    node.untried_moves.remove(m)
+                    node = child_node
+                # Simulation (rollout)
+                result = rollout(node.board, node.turn, node.moves_left, rollout_limit=10)
+                move_str = move_to_str([m])
+                print("Simulated move:", move_str, "Rollout result:", result, file=sys.stderr)
+                # Backpropagation
+                backpropagate(node, result)
+            # Choose the move from the root with the highest visit count.
+            best_child = max(root_node.children, key=lambda c: c.visits) if root_node.children else None
+            return [best_child.move] if best_child is not None else [random.choice(root_node.untried_moves)]
+
+        # Run MCTS starting from the current board state.
+        if np.count_nonzero(self.board) == 0:
+            best_move = [(self.size // 2, self.size // 2)]
+        else:
+            if self.root_node is None:
+                self.root_node = MCTSNode(np.copy(self.board), my_color, 1)
+            else:
+                root = None
+                for child_node in self.root_node.children:
+                    for grandchild_node in child_node.children:
+                        if grandchild_node.board == self.board:
+                            root = grandchild_node
+                            break
+                if root is None:
+                    root = MCTSNode(np.copy(self.board), my_color, 1)
+                self.root_node = root
+
+            best_move_1 = mcts_search(self.root_node, my_color, moves_left=1, iterations=30)
+            # copy_board = np.copy(self.board)
+            # for r, c in best_move_1:
+            #     copy_board[r, c] = my_color
+            for child in self.root_node.children:
+                if child.move == best_move_1[0]:
+                    self.root_node = child
+                    break
+            # root_node = MCTSNode(np.copy(self.board), my_color, 1)
+            best_move_2 = mcts_search(self.root_node, my_color, moves_left=0, iterations=30)
+            for child in self.root_node.children:
+                if child.move == best_move_2[0]:
+                    self.root_node = child
+                    break
+            best_move = best_move_1 + best_move_2
+
+        if best_move:
+            move_str = move_to_str(best_move)
+            self.play_move(color, move_str)
+            print(move_str, flush=True)
+            print("MCTS", move_str, file=sys.stderr)
+        else:
+            # Fallback to a random move if MCTS fails (should rarely happen)
+            empty_positions = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
+            selected = random.choice(empty_positions)
+            move_str = f"{self.index_to_label(selected[1])}{selected[0] + 1}"
+            self.play_move(color, move_str)
+            print(move_str, flush=True)
+            print("Random", move_str, file=sys.stderr)
 
     def show_board(self):
-        """Displays the board as text."""
+        """Displays the board in text format."""
         print("= ")
         for row in range(self.size - 1, -1, -1):
             line = f"{row+1:2} " + " ".join("X" if self.board[row, col] == 1 else "O" if self.board[row, col] == 2 else "." for col in range(self.size))
@@ -352,7 +595,7 @@ class Connect6Game:
         """Parses and executes GTP commands."""
         command = command.strip()
         if command == "get_conf_str env_board_size:":
-            return "env_board_size=19"
+            print("env_board_size=19", flush=True)
 
         if not command:
             return
