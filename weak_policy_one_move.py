@@ -54,6 +54,8 @@ class Connect6Game:
         self.game_over = False
         self.last_opponent_move = None
 
+        self.root_node = None
+
     def reset_board(self):
         """Resets the board and game state."""
         self.board.fill(0)
@@ -494,18 +496,33 @@ class Connect6Game:
         if np.count_nonzero(self.board) == 0:
             best_move = [(self.size // 2, self.size // 2)]
         else:
-            root_node = MCTSNode(np.copy(self.board), my_color, 1)
-            best_move_1 = mcts_search(root_node, my_color, moves_left=1, iterations=30)
-            copy_board = np.copy(self.board)
-            for r, c in best_move_1:
-                copy_board[r, c] = my_color
+            if self.root_node is None:
+                self.root_node = MCTSNode(np.copy(self.board), my_color, 1)
+            else:
+                root = None
+                for child_node in self.root_node.children:
+                    for grandchild_node in child_node.children:
+                        if grandchild_node.board == self.board:
+                            root = grandchild_node
+                            break
+                if root is None:
+                    root = MCTSNode(np.copy(self.board), my_color, 1)
+                self.root_node = root
 
-            for child in root_node.children:
+            best_move_1 = mcts_search(self.root_node, my_color, moves_left=1, iterations=30)
+            # copy_board = np.copy(self.board)
+            # for r, c in best_move_1:
+            #     copy_board[r, c] = my_color
+            for child in self.root_node.children:
                 if child.move == best_move_1[0]:
-                    root_node = child
+                    self.root_node = child
                     break
             # root_node = MCTSNode(np.copy(self.board), my_color, 1)
-            best_move_2 = mcts_search(root_node, my_color, moves_left=0, iterations=30)
+            best_move_2 = mcts_search(self.root_node, my_color, moves_left=0, iterations=30)
+            for child in self.root_node.children:
+                if child.move == best_move_2[0]:
+                    self.root_node = child
+                    break
             best_move = best_move_1 + best_move_2
 
         if best_move:
