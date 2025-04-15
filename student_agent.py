@@ -630,7 +630,7 @@ class TD_MCTS:
 def load_agent(path):
     return pickle.load(path.open("rb"))
 
-ngame, approximator = load_agent(Path('nTupleNewrok_202613games.pkl'))
+ngame, approximator = load_agent(Path('nTupleNewrok_205645games.pkl'))
 
 def get_action(state, score):
     env = Game2048AfterStateEnv()
@@ -655,7 +655,7 @@ def get_action(state, score):
     if debug:
         print("TD best action:", best_action, "best score:", env.score + best_value)
 
-    td_mcts = TD_MCTS(env, approximator, iterations=81, exploration_constant=1.5, rollout_depth=0, gamma=1)
+    td_mcts = TD_MCTS(env, approximator, iterations=51, exploration_constant=0.05, rollout_depth=0, gamma=1)
     
     root = TD_MCTS_Node(state, score)
     root.is_random_state = True

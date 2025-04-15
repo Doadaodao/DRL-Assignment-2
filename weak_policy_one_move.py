@@ -187,20 +187,20 @@ class Connect6Game:
         patterns = {
             "111111":   10000,       # Six in a row (winning pattern).
             "0111110":  10000,     # Five in a row with open ends (winning threat).
-            "111011":   10000,     # Five in a row with open ends (winning threat).
-            "110111":   10000,     # Five in a row with open ends (winning threat).
-            "101111":   10000,     # Five in a row with open ends (winning threat).
-            "111101":   10000,     # Five in a row with open ends (winning threat).
+            # "111011":   10000,     # Five in a row with open ends (winning threat).
+            # "110111":   10000,     # Five in a row with open ends (winning threat).
+            # "101111":   10000,     # Five in a row with open ends (winning threat).
+            # "111101":   10000,     # Five in a row with open ends (winning threat).
             "011110":   5000,     # Open four: four contiguous stones with empty ends.
-            "0110110":  5000,     # A broken pattern: e.g. pattern "11011" with open ends.
-            "0101110":  5000,     # Nearly complete pattern.
-            "0110110":  5000,     # Nearly complete pattern.
-            "0111010":  5000,     # Variation on nearly complete pattern.
+            # "0110110":  5000,     # A broken pattern: e.g. pattern "11011" with open ends.
+            # "0101110":  5000,     # Nearly complete pattern.
+            # "0110110":  5000,     # Nearly complete pattern.
+            # "0111010":  5000,     # Variation on nearly complete pattern.
             "01110":    1000,     # Open three.
-            "010110":   1000,     # A split pattern with a gap in between.
-            "011010":   1000,     # A split pattern with a gap in between.
+            # "010110":   1000,     # A split pattern with a gap in between.
+            # "011010":   1000,     # A split pattern with a gap in between.
             "0110":     100,     # Open two.
-            "01010":    100,     # Open two.
+            # "01010":    100,     # Open two.
         }
 
         # Scan through all lines and accumulate scores.
@@ -354,7 +354,7 @@ class Connect6Game:
                 return random.choice(empty_positions)
         
         # Helper: Rollout (simulation) from a given state until terminal or a rollout limit is reached.
-        def rollout(board, rollout_turn, moves_left, rollout_limit, factor = 10000):
+        def rollout(board, rollout_turn, moves_left, rollout_limit, factor = 100000):
             size = board.shape[0]
             current_board = copy.deepcopy(board)
             current_turn = rollout_turn
@@ -385,8 +385,8 @@ class Connect6Game:
                 current_turn = 3 - current_turn
 
             # If no terminal state found, evaluate the board
-            # value = self.evaluate_board(current_board, my_color) / factor
-            # return value
+            value = self.evaluate_board(current_board, my_color) / factor
+            return value
             return 0
 
         # MCTS Node definition
