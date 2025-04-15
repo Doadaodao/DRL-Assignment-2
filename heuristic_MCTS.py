@@ -160,31 +160,34 @@ class Connect6Game:
         self.play_move(color, move_str)
         print(move_str, flush=True)
 
-    def local_random_generate_move(self, color):
-        """Generates a random move near the opponent's last move."""
-        if self.game_over:
-            print("? Game over")
-            return
+    def evaluate_position(self, r, c, color):
+        """Evaluates the strength of a position based on alignment potential."""
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        score = 0
 
-        if self.last_opponent_move:
-            last_r, last_c = self.last_opponent_move
-            potential_moves = [(r, c) for r in range(max(0, last_r - 2), min(self.size, last_r + 3))
-                                           for c in range(max(0, last_c - 2), min(self.size, last_c + 3))
-                                           if self.board[r, c] == 0]
-        else:
-            potential_moves = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
+        for dr, dc in directions:
+            count = 1
+            rr, cc = r + dr, c + dc
+            while 0 <= rr < self.size and 0 <= cc < self.size and self.board[rr, cc] == color:
+                count += 1
+                rr += dr
+                cc += dc
+            rr, cc = r - dr, c - dc
+            while 0 <= rr < self.size and 0 <= cc < self.size and self.board[rr, cc] == color:
+                count += 1
+                rr -= dr
+                cc -= dc
 
-        if not potential_moves:
-            print("? No valid moves")
-            return
-
-        selected = random.choice(potential_moves)
-        move_str = f"{self.index_to_label(selected[1])}{selected[0]+1}"
-        self.play_move(color, move_str)
-
-        print(f"{move_str}\n\n", end='', flush=True)
-        print(move_str, file=sys.stderr)
-
+            if count >= 5:
+                score += 10000
+            elif count == 4:
+                score += 5000
+            elif count == 3:
+                score += 1000
+            elif count == 2:
+                score += 100
+    
+        return score
     # ----------------------------------
     # Heuristic evaluation function
     # ----------------------------------

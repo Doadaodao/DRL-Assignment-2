@@ -36,7 +36,7 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.1, gamma=0.99,
         trajectory = []
 
         while not done:
-            curr_state = copy.deepcopy(state)
+            curr_after_state = copy.deepcopy(state)
             env.add_random_tile()
 
             legal_moves = [a for a in range(4) if env.is_move_legal(a)]
@@ -65,8 +65,8 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.1, gamma=0.99,
             max_tile = max(max_tile, np.max(new_state))
 
             # Store the trajectory information
-            next_state = copy.deepcopy(new_state)
-            trajectory.append((curr_state, incremental_reward, next_state, done))
+            next_after_state = copy.deepcopy(new_state)
+            trajectory.append((curr_after_state, incremental_reward, next_after_state, done))
 
             # --- TD Update ---
             # v_current = approximator.value(curr_state)
@@ -80,11 +80,11 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.1, gamma=0.99,
         
         # --- Update using the entire trajectory in reverse ---
         trajectory.reverse()
-        for (s, r, s_next, terminal_flag) in trajectory:
-            v_current = approximator.value(s)
-            v_next = 0 if terminal_flag else approximator.value(s_next)
-            delta = r + gamma * v_next - v_current
-            approximator.update(s, delta, alpha)
+        for (curr_after_state, incremental_reward, next_after_state, done) in trajectory:
+            v_current = approximator.value(curr_after_state)
+            v_next = 0 if done else approximator.value(next_after_state)
+            delta = incremental_reward + gamma * v_next - v_current
+            approximator.update(curr_after_state, delta, alpha)
 
         final_scores.append(env.score)
         success_flags.append(1 if max_tile >= 2048 else 0)

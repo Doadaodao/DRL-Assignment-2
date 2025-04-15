@@ -1,12 +1,3 @@
-import copy
-import random
-import math
-import numpy as np
-import os
-import pickle
-from collections import defaultdict
-
-# Remember to adjust your student ID in meta.xml
 import numpy as np
 import pickle
 import random
@@ -17,8 +8,15 @@ import copy
 import random
 import math
 
-from afterstate_env import Game2048AfterStateEnv 
+from randomstate_env import Game2048Env
 
+import copy
+import random
+import math
+import numpy as np
+import os
+import pickle
+from collections import defaultdict
 
 # -------------------------------
 # Transformation functions for symmetric sampling on a 4x4 board.
@@ -50,6 +48,9 @@ def reflect_vertical(pattern):
     # Reflect over horizontal axis:
     # (row, col) -> (3 - row, c)
     return [(3 - r, c) for (r, c) in pattern]
+
+def const_factory():
+    return 160000.000001 / 8
 
 class NTupleApproximator:
     def __init__(self, board_size, patterns):
@@ -151,6 +152,9 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
         max_tile = np.max(state)
 
         while not done:
+            curr_state = copy.deepcopy(state)
+            env.add_random_tile()
+
             legal_moves = [a for a in range(4) if env.is_move_legal(a)]
             if not legal_moves:
                 break
@@ -177,8 +181,6 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
                 action = best_action
 
             # --- Take action in the real environment ---
-
-            curr_state = copy.deepcopy(state)
             next_state, new_score, done, _ = env.step(action)
             incremental_reward = new_score - previous_score
             previous_score = new_score
@@ -186,20 +188,21 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
 
             # --- TD Update ---
             v_current = approximator.value(curr_state)
+            print(f"Current state value: {v_current}")
             v_next = 0 if done else approximator.value(next_state)
             delta = incremental_reward + gamma * v_next - v_current
             approximator.update(curr_state, delta, alpha)
 
             # Optionally, you could store trajectory information here.
-            env.add_random_tile()
-            state = next_state
+            
+            state = env.board
 
         final_scores.append(env.score)
         success_flags.append(1 if max_tile >= 2048 else 0)
 
-        if (episode + 1) % 100 == 0:
-            avg_score = np.mean(final_scores[-100:])
-            success_rate = np.sum(success_flags[-100:]) / 100
+        if (episode + 1) % 500 == 0:
+            avg_score = np.mean(final_scores[-500:])
+            success_rate = np.sum(success_flags[-5000:]) / 500
             print(f"Episode {episode+1}/{num_episodes} | Avg Score: {avg_score:.2f} | Success Rate: {success_rate:.2f}")
         # --- Save Checkpoint ---
         if (episode + 1) % save_interval == 0:
@@ -210,30 +213,66 @@ def td_learning(env, approximator, num_episodes=50000, alpha=0.01, gamma=0.99,
 
     return final_scores
 
-patterns = [
-    # Pattern 1: top row and left part of second row
-    [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1)],
-    # Pattern 2: second row and left part of third row
-    [(1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1)],
-    # Pattern 3: thrid row and left part of fourth row
-    [(2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1)],
-    # Pattern 4
-    [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)],
-    # Pattern 5
-    [(1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)]
-]
+def get_action(state, score):
+    env = Game2048Env()
+    env.board = state
+    env.score = score
+    
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    # print("Value estimation of state is:", approximator.value(state))
+    # Use your N-Tuple approximator to play 2048
+    best_value = -float('inf')
+    best_action = None
+    for action in legal_moves:
+        env_copy = copy.deepcopy(env)
 
-approximator = NTupleApproximator(board_size=4, patterns=patterns)
+        if action == 0:
+            moved = env_copy.move_up()
+        elif action == 1:
+            moved = env_copy.move_down()
+        elif action == 2:
+            moved = env_copy.move_left()
+        elif action == 3:
+            moved = env_copy.move_right()
 
-env = Game2048AfterStateEnv()
+        # sim_state, sim_score, sim_done, _ = env_copy.step(a)
+        reward = env_copy.score - env.score
+        value_est = reward + approximator.value(env_copy.board)
+        
+        if value_est > best_value:
+            best_value = value_est
+            best_action = action
 
-# Run TD-Learning training
-# Note: To achieve significantly better performance, you will likely need to train for over 100,000 episodes.
-# However, to quickly verify that your implementation is working correctly, you can start by running it for 1,000 episodes before scaling up.
-final_scores = td_learning(env, approximator, num_episodes=150000, alpha=0.1, gamma=0.99, save_dir="5x6_TD0_afterstate_checkpoints")
+    return best_action
 
-plt.plot(final_scores)
-plt.xlabel("Episodes")
-plt.ylabel("Scores")
-plt.title("Training Progress")
-plt.show()
+
+if __name__ == "__main__":
+    
+
+    with open('./8x6_afterstate_approximator/approximator_checkpoint_episode_50000.pkl', 'rb') as f:
+        approximator = pickle.load(f)
+    
+    total_score = 0
+    for _ in range(20):
+        
+        env = Game2048Env()
+        state = env.reset()
+        # env.render()
+        done = False
+
+        while not done:
+            # Get the action from the approximator
+            action = get_action(state, env.score)
+            # Take the action in the environment
+            next_state, new_score, done, _ = env.step(action)
+            state = next_state
+            # Print the current state and score
+            # print("Current state:\n", state)
+            # print("Current score:", env.score)
+            # env.render()
+
+
+        # Print final game results
+        print("Game over, final score:", env.score)
+        total_score += env.score
+    print("Average score over 20 games:", total_score / 20)
